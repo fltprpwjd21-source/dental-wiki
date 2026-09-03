@@ -114,7 +114,8 @@ npm test           # 자동 테스트 (계산 코드) — 몇 초
 npm run test:api   # 자동 테스트 (API 규칙) — 개발 서버가 떠 있어야 함
 npm run lint       # 문법·스타일 검사
 npm run build      # 테스트 + 빌드 확인
-npm run seed:docs  # data/seed-docs 의 마크다운 문서를 DB에 등록 (임베딩 함께 생성)
+npm run seed:docs -- --check   # 등록 전 형식만 검사 (DB·OpenAI 호출 없음)
+npm run seed:docs              # data/seed-docs 의 마크다운 문서를 DB에 등록
 ```
 
 ## 자동 테스트
@@ -151,17 +152,49 @@ Vercel 배포도 자동으로 막힌다.** 사이트가 깨진 채로 올라가�
 
 ## 문서 추가하는 방법
 
-1. 앱에서 직접: 카테고리 화면 → "새 문서 만들기"
-2. 파일로 한번에: `data/seed-docs/`에 아래 형식으로 `.md` 파일을 넣고 `npm run seed:docs`
+### 방법 1 — 앱에서 직접
 
-```markdown
----
-category: handover        # handover | insurance | policy
-title: 문서 제목
----
+카테고리 화면 → "새 문서 만들기". 한두 건 추가할 때 편하다.
 
-본문 내용
-```
+### 방법 2 — 파일로 한번에 (기존 문서 이관용)
+
+파워포인트·엑셀·종이 문서를 옮겨올 때 쓴다.
+
+1. `data/templates/` 의 틀을 복사한다. 작성 요령은 그 폴더의 `README.md`에 있다.
+
+   | 원본 | 틀 | category |
+   |---|---|---|
+   | 진료과별 인수인계 | `1-인수인계.md` | `handover` |
+   | 보험·비보험 수가 | `2-수가.md` | `insurance` |
+   | 내규·운영회칙 | `3-내규.md` | `policy` |
+
+2. `data/seed-docs/` 에 저장하고 내용을 채운다. **문서 하나에 주제 하나**로 나눈다.
+
+   ```bash
+   cp data/templates/1-인수인계.md "data/seed-docs/보철과-임플란트2차수술.md"
+   ```
+
+3. 등록 전에 형식을 검사한다. 이 단계는 DB도 OpenAI도 건드리지 않아 비용이 들지 않는다.
+
+   ```bash
+   npm run seed:docs -- --check
+   ```
+
+4. 통과하면 등록한다.
+
+   ```bash
+   npm run seed:docs
+   ```
+
+### 알아둘 것
+
+- **같은 카테고리·제목의 문서가 이미 있으면 건너뛴다.** 그래서 문서를 나눠서 여러 번
+  등록해도 이전에 넣은 문서가 중복으로 쌓이지 않는다. 여러 날에 걸쳐 옮겨와도 안전하다.
+- 이미 등록된 문서의 내용을 바꾸려면 **앱 화면에서 수정**한다. 그래야 수정 이력이 남는다.
+  파일을 고쳐 다시 등록하는 방식은 이력이 남지 않는다.
+- 틀의 `<!-- 작성 안내 -->` 주석은 등록할 때 자동으로 걷어내지만, 되도록 직접 지운다.
+- `data/templates/` 의 파일은 등록되지 않는다. 등록되는 것은 `data/seed-docs/` 안의 `.md` 뿐이다.
+
 
 ## 주의
 
