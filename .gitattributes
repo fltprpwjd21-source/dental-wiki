@@ -1,0 +1,11 @@
+# 윈도우/맥을 오가며 작업해도 줄바꿈 차이로 파일 전체가 바뀐 것처럼 보이지 않게 통일한다.
+* text=auto eol=lf
+
+# 바이너리 파일은 줄바꿈 변환 대상에서 제외
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
