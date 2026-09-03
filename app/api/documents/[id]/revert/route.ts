@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { createEmbedding } from "@/lib/embeddings";
+import { isUuid } from "@/lib/uuid";
 
 // PLAN 11번: 로그에서 선택한 이전 버전으로 되돌린다. 되돌리기도 하나의 로그(action: revert)로 남는다.
+//
+// 문서 갱신과 로그 기록은 revert_document 함수 안에서 한 트랜잭션으로 처리된다.
+// 임베딩은 외부 API(OpenAI) 호출이라 함수 안에서 만들 수 없어, 되돌릴 버전의
+// 제목·본문을 먼저 읽어 임베딩을 만든 뒤 함수에 넘긴다.
+// 로그는 수정·삭제가 불가능하므로, 여기서 읽은 값과 함수가 읽는 값은 항상 같다.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -14,10 +20,14 @@ export async function POST(
   }
 
   const { id } = await params;
+  if (!isUuid(id)) {
+    return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
+  }
+
   const body = await request.json().catch(() => null);
   const logId = typeof body?.logId === "string" ? body.logId : "";
 
-  if (!logId) {
+  if (!logId || !isUuid(logId)) {
     return NextResponse.json({ error: "되돌릴 버전을 선택해주세요." }, { status: 400 });
   }
 
@@ -25,7 +35,7 @@ export async function POST(
 
   const { data: targetLog, error: logFetchError } = await supabase
     .from("document_logs")
-    .select("document_id, new_content")
+    .select("document_id, new_title, new_content")
     .eq("id", logId)
     .maybeSingle();
 
@@ -33,47 +43,33 @@ export async function POST(
     return NextResponse.json({ error: "되돌릴 버전을 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const { data: current, error: currentFetchError } = await supabase
-    .from("documents")
-    .select("title, content")
-    .eq("id", id)
-    .maybeSingle();
+  const embedding = await createEmbedding(
+    `${targetLog.new_title}\n\n${targetLog.new_content}`,
+  );
 
-  if (currentFetchError || !current) {
-    return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
-  }
+  const { data, error } = await supabase.rpc("revert_document", {
+    p_id: id,
+    p_log_id: logId,
+    p_embedding: embedding,
+    p_employee_id: session.employeeId,
+  });
 
-  if (current.content === targetLog.new_content) {
-    return NextResponse.json({ error: "이미 같은 내용입니다." }, { status: 400 });
-  }
-
-  const embedding = await createEmbedding(`${current.title}\n\n${targetLog.new_content}`);
-
-  const { data: updated, error: updateError } = await supabase
-    .from("documents")
-    .update({ content: targetLog.new_content, embedding, updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select("id, category, title, content, updated_at")
-    .single();
-
-  if (updateError || !updated) {
+  if (error) {
+    if (error.message?.includes("LOG_NOT_FOUND")) {
+      return NextResponse.json({ error: "되돌릴 버전을 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (error.message?.includes("DOCUMENT_NOT_FOUND")) {
+      return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (error.message?.includes("NO_CHANGES")) {
+      return NextResponse.json({ error: "이미 같은 내용입니다." }, { status: 400 });
+    }
     return NextResponse.json({ error: "되돌리기에 실패했습니다." }, { status: 500 });
   }
 
-  const { error: revertLogError } = await supabase.from("document_logs").insert({
-    document_id: id,
-    action: "revert",
-    previous_content: current.content,
-    new_content: targetLog.new_content,
-    edited_by: session.employeeId,
-  });
-
-  if (revertLogError) {
-    return NextResponse.json(
-      { error: "되돌리기는 됐지만 로그 기록에 실패했습니다." },
-      { status: 500 },
-    );
+  if (!data?.[0]) {
+    return NextResponse.json({ error: "되돌리기에 실패했습니다." }, { status: 500 });
   }
 
-  return NextResponse.json({ document: updated });
+  return NextResponse.json({ document: data[0] });
 }

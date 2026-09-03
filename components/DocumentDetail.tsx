@@ -15,14 +15,17 @@ type Document = {
 export default function DocumentDetail({ document }: { document: Document }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
+  const [title, setTitle] = useState(document.title);
   const [content, setContent] = useState(document.content);
-  const [draft, setDraft] = useState(document.content);
+  const [titleDraft, setTitleDraft] = useState(document.title);
+  const [contentDraft, setContentDraft] = useState(document.content);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [logRefreshKey, setLogRefreshKey] = useState(0);
 
   function startEditing() {
-    setDraft(content);
+    setTitleDraft(title);
+    setContentDraft(content);
     setError(null);
     setIsEditing(true);
   }
@@ -32,7 +35,9 @@ export default function DocumentDetail({ document }: { document: Document }) {
     setError(null);
   }
 
-  function handleReverted(newContent: string) {
+  // 되돌리기는 제목과 본문을 함께 복원한다
+  function handleReverted(newTitle: string, newContent: string) {
+    setTitle(newTitle);
     setContent(newContent);
     if (isEditing) {
       setIsEditing(false);
@@ -48,7 +53,7 @@ export default function DocumentDetail({ document }: { document: Document }) {
       const response = await fetch(`/api/documents/${document.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: draft }),
+        body: JSON.stringify({ title: titleDraft, content: contentDraft }),
       });
       const data = await response.json();
 
@@ -57,6 +62,7 @@ export default function DocumentDetail({ document }: { document: Document }) {
         return;
       }
 
+      setTitle(data.document.title);
       setContent(data.document.content);
       setIsEditing(false);
       setLogRefreshKey((key) => key + 1);
@@ -71,21 +77,41 @@ export default function DocumentDetail({ document }: { document: Document }) {
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
       <p className="text-xs text-brand-muted">{CATEGORY_LABELS[document.category]}</p>
-      <h1 className="mb-4 text-lg font-semibold text-brand">{document.title}</h1>
 
       {isEditing ? (
         <div className="space-y-3">
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            rows={12}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-          />
+          <div className="space-y-1">
+            <label htmlFor="documentTitle" className="block text-xs text-gray-500">
+              제목
+            </label>
+            <input
+              id="documentTitle"
+              type="text"
+              value={titleDraft}
+              onChange={(event) => setTitleDraft(event.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-semibold focus:border-brand focus:outline-none"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="documentContent" className="block text-xs text-gray-500">
+              본문
+            </label>
+            <textarea
+              id="documentContent"
+              value={contentDraft}
+              onChange={(event) => setContentDraft(event.target.value)}
+              rows={12}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-brand focus:outline-none"
+            />
+          </div>
+
           {error && (
             <p role="alert" className="text-sm text-red-600">
               {error}
             </p>
           )}
+
           <div className="flex gap-2">
             <button
               type="button"
@@ -107,6 +133,7 @@ export default function DocumentDetail({ document }: { document: Document }) {
         </div>
       ) : (
         <div className="space-y-4">
+          <h1 className="mb-4 text-lg font-semibold text-brand">{title}</h1>
           <p className="whitespace-pre-wrap text-sm text-gray-800">{content}</p>
           <button
             type="button"

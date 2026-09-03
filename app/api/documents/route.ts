@@ -7,6 +7,9 @@ import type { DocumentCategory } from "@/lib/categories";
 const VALID_CATEGORIES: DocumentCategory[] = ["handover", "insurance", "policy"];
 
 // PLAN 7·8번: 신규 문서 등록. 최초 등록도 하나의 수정 이력(action: create)으로 남긴다.
+//
+// 문서 저장과 로그 기록은 create_document 함수 안에서 한 트랜잭션으로 처리된다.
+// 예전처럼 따로 쓰면 문서만 저장되고 로그가 빠지는 상태가 생길 수 있었다.
 export async function POST(request: NextRequest) {
   const session = await getSession();
   if (!session) {
@@ -28,30 +31,17 @@ export async function POST(request: NextRequest) {
   const embedding = await createEmbedding(`${title}\n\n${content}`);
   const supabase = getServerSupabaseClient();
 
-  const { data: document, error: insertError } = await supabase
-    .from("documents")
-    .insert({ category, title, content, embedding, created_by: session.employeeId })
-    .select("id, category, title, content, created_at")
-    .single();
+  const { data, error } = await supabase.rpc("create_document", {
+    p_category: category,
+    p_title: title,
+    p_content: content,
+    p_embedding: embedding,
+    p_employee_id: session.employeeId,
+  });
 
-  if (insertError || !document) {
+  if (error || !data?.[0]) {
     return NextResponse.json({ error: "문서 등록에 실패했습니다." }, { status: 500 });
   }
 
-  const { error: logError } = await supabase.from("document_logs").insert({
-    document_id: document.id,
-    action: "create",
-    previous_content: null,
-    new_content: content,
-    edited_by: session.employeeId,
-  });
-
-  if (logError) {
-    return NextResponse.json(
-      { error: "문서는 등록됐지만 로그 기록에 실패했습니다." },
-      { status: 500 },
-    );
-  }
-
-  return NextResponse.json({ document });
+  return NextResponse.json({ document: data[0] });
 }
