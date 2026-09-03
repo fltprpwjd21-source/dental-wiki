@@ -38,17 +38,19 @@ export async function POST(request: NextRequest) {
   const supabase = getServerSupabaseClient();
   const { data: employee, error } = await supabase
     .from("employee_whitelist")
-    .select("is_admin")
+    .select("is_admin, is_active")
     .eq("employee_id", employeeId)
     .maybeSingle();
 
-  if (error || !employee) {
+  // 비활성화된 사원번호도 등록되지 않은 것과 동일하게 취급한다 (오류 메시지도 같게 유지)
+  if (error || !employee || !employee.is_active) {
     return NextResponse.json({ error: INVALID_LOGIN_MESSAGE }, { status: 401 });
   }
 
+  // 토큰에는 사원번호만 담는다. 관리자 여부는 요청마다 DB에서 읽으므로(lib/auth.ts)
+  // 여기에 넣으면 강등이 즉시 반영되지 않는 낡은 값이 된다.
   const token = signSession({
     employeeId,
-    isAdmin: employee.is_admin,
     exp: Date.now() + SESSION_TTL_MS,
   });
 
