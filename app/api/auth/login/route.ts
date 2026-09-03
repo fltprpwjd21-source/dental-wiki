@@ -38,12 +38,11 @@ export async function POST(request: NextRequest) {
   const supabase = getServerSupabaseClient();
   const { data: employee, error } = await supabase
     .from("employee_whitelist")
-    .select("is_admin, is_active")
+    .select("is_admin")
     .eq("employee_id", employeeId)
     .maybeSingle();
 
-  // 비활성화된 사원번호도 등록되지 않은 것과 동일하게 취급한다 (오류 메시지도 같게 유지)
-  if (error || !employee || !employee.is_active) {
+  if (error || !employee) {
     return NextResponse.json({ error: INVALID_LOGIN_MESSAGE }, { status: 401 });
   }
 

@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   const supabase = getServerSupabaseClient();
   const { data: whitelist } = await supabase
     .from("employee_whitelist")
-    .select("employee_id, is_admin, is_active, created_at")
+    .select("employee_id, is_admin, created_at")
     .order("created_at", { ascending: true });
 
   return (

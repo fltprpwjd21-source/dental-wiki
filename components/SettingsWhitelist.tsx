@@ -2,12 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
-type Employee = {
-  employee_id: string;
-  is_admin: boolean;
-  is_active: boolean;
-  created_at: string;
-};
+type Employee = { employee_id: string; is_admin: boolean; created_at: string };
 
 export default function SettingsWhitelist({
   initialWhitelist,
@@ -20,23 +15,12 @@ export default function SettingsWhitelist({
   const [employeeId, setEmployeeId] = useState("");
   const [isAdminChecked, setIsAdminChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [changingId, setChangingId] = useState<string | null>(null);
-
-  function upsertRow(employee: Employee) {
-    setWhitelist((prev) => {
-      const exists = prev.some((row) => row.employee_id === employee.employee_id);
-      return exists
-        ? prev.map((row) => (row.employee_id === employee.employee_id ? employee : row))
-        : [...prev, employee];
-    });
-  }
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    setNotice(null);
     setIsSubmitting(true);
 
     try {
@@ -52,10 +36,7 @@ export default function SettingsWhitelist({
         return;
       }
 
-      upsertRow(data.employee);
-      if (data.reactivated) {
-        setNotice(`${data.employee.employee_id}는 이전에 비활성화된 계정이라 다시 활성화했습니다.`);
-      }
+      setWhitelist((prev) => [...prev, data.employee]);
       setEmployeeId("");
       setIsAdminChecked(false);
     } catch {
@@ -65,31 +46,32 @@ export default function SettingsWhitelist({
     }
   }
 
-  // 물리 삭제가 아니라 비활성화다. 문서·로그의 "누가 작성·수정했는지"를 보존해야 하고
-  // (PRD 5번②), 외래키 때문에 삭제 자체도 불가능하다.
-  async function handleToggleActive(targetId: string, nextActive: boolean) {
+  // 계정을 지워도 문서·로그에 남은 작성자·수정자 기록은 그대로 보존된다.
+  // (created_by / edited_by는 화이트리스트를 참조하지 않는 스냅샷이다)
+  async function handleDelete(targetId: string) {
+    if (!window.confirm(`사원번호 ${targetId}를 삭제할까요?\n\n로그인이 즉시 차단됩니다. 문서와 수정 로그에 남은 기록은 그대로 보존됩니다.`)) {
+      return;
+    }
+
     setError(null);
-    setNotice(null);
-    setChangingId(targetId);
+    setDeletingId(targetId);
 
     try {
       const response = await fetch(`/api/settings/whitelist/${targetId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: nextActive }),
+        method: "DELETE",
       });
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setError(data.error ?? "변경에 실패했습니다.");
+        setError(data.error ?? "삭제에 실패했습니다.");
         return;
       }
 
-      upsertRow(data.employee);
+      setWhitelist((prev) => prev.filter((employee) => employee.employee_id !== targetId));
     } catch {
-      setError("변경 중 오류가 발생했습니다.");
+      setError("삭제 중 오류가 발생했습니다.");
     } finally {
-      setChangingId(null);
+      setDeletingId(null);
     }
   }
 
@@ -100,26 +82,15 @@ export default function SettingsWhitelist({
           <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
             <th className="py-2">사원번호</th>
             <th className="py-2">관리자 여부</th>
-            <th className="py-2">상태</th>
             <th className="py-2">등록일</th>
             <th className="py-2" />
           </tr>
         </thead>
         <tbody>
           {whitelist.map((employee) => (
-            <tr
-              key={employee.employee_id}
-              className={`border-b border-gray-100 ${employee.is_active ? "" : "text-gray-400"}`}
-            >
+            <tr key={employee.employee_id} className="border-b border-gray-100">
               <td className="py-2">{employee.employee_id}</td>
               <td className="py-2">{employee.is_admin ? "관리자" : "일반"}</td>
-              <td className="py-2">
-                {employee.is_active ? (
-                  "활성"
-                ) : (
-                  <span className="text-red-600">비활성 (로그인 차단)</span>
-                )}
-              </td>
               <td className="py-2 text-gray-500">
                 {new Date(employee.created_at).toLocaleDateString("ko-KR")}
               </td>
@@ -129,17 +100,11 @@ export default function SettingsWhitelist({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => handleToggleActive(employee.employee_id, !employee.is_active)}
-                    disabled={changingId !== null}
-                    className={`text-xs underline disabled:opacity-50 ${
-                      employee.is_active ? "text-red-600" : "text-brand"
-                    }`}
+                    onClick={() => handleDelete(employee.employee_id)}
+                    disabled={deletingId !== null}
+                    className="text-xs text-red-600 underline disabled:opacity-50"
                   >
-                    {changingId === employee.employee_id
-                      ? "변경 중..."
-                      : employee.is_active
-                        ? "비활성화"
-                        : "다시 활성화"}
+                    {deletingId === employee.employee_id ? "삭제 중..." : "삭제"}
                   </button>
                 )}
               </td>
@@ -149,8 +114,9 @@ export default function SettingsWhitelist({
       </table>
 
       <p className="text-xs text-gray-500">
-        계정은 완전히 삭제되지 않습니다. 비활성화하면 즉시 로그인이 차단되고, 이미 로그인해
-        있던 세션도 바로 끊깁니다. 문서·수정 로그에 남은 작성자 기록은 그대로 보존됩니다.
+        삭제하면 그 사원번호로는 즉시 로그인할 수 없고, 이미 로그인해 있던 세션도 바로
+        끊깁니다. 문서와 수정 로그에 남은 &quot;누가 작성·수정했는지&quot; 기록은 그대로
+        보존됩니다.
       </p>
 
       <form
@@ -186,8 +152,6 @@ export default function SettingsWhitelist({
           {isSubmitting ? "등록 중..." : "추가"}
         </button>
       </form>
-
-      {notice && <p className="text-sm text-brand">{notice}</p>}
 
       {error && (
         <p role="alert" className="text-sm text-red-600">
