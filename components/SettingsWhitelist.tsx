@@ -77,41 +77,44 @@ export default function SettingsWhitelist({
 
   return (
     <div className="space-y-6">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-            <th className="py-2">사원번호</th>
-            <th className="py-2">관리자 여부</th>
-            <th className="py-2">등록일</th>
-            <th className="py-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {whitelist.map((employee) => (
-            <tr key={employee.employee_id} className="border-b border-gray-100">
-              <td className="py-2">{employee.employee_id}</td>
-              <td className="py-2">{employee.is_admin ? "관리자" : "일반"}</td>
-              <td className="py-2 text-gray-500">
-                {new Date(employee.created_at).toLocaleDateString("ko-KR")}
-              </td>
-              <td className="py-2 text-right">
-                {employee.employee_id === currentEmployeeId ? (
-                  <span className="text-xs text-gray-400">본인</span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(employee.employee_id)}
-                    disabled={deletingId !== null}
-                    className="text-xs text-red-600 underline disabled:opacity-50"
-                  >
-                    {deletingId === employee.employee_id ? "삭제 중..." : "삭제"}
-                  </button>
-                )}
-              </td>
+      {/* 사원번호나 날짜가 길어져도 페이지 전체가 옆으로 밀리지 않게, 표만 스크롤되게 감싼다 */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[20rem] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
+              <th className="py-2">사원번호</th>
+              <th className="py-2">관리자 여부</th>
+              <th className="py-2">등록일</th>
+              <th className="py-2" />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {whitelist.map((employee) => (
+              <tr key={employee.employee_id} className="border-b border-gray-100">
+                <td className="py-2">{employee.employee_id}</td>
+                <td className="py-2">{employee.is_admin ? "관리자" : "일반"}</td>
+                <td className="py-2 text-gray-500">
+                  {new Date(employee.created_at).toLocaleDateString("ko-KR")}
+                </td>
+                <td className="py-2 text-right">
+                  {employee.employee_id === currentEmployeeId ? (
+                    <span className="text-xs text-gray-400">본인</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(employee.employee_id)}
+                      disabled={deletingId !== null}
+                      className="text-xs text-red-600 underline disabled:opacity-50"
+                    >
+                      {deletingId === employee.employee_id ? "삭제 중..." : "삭제"}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <p className="text-xs text-gray-500">
         삭제하면 그 사원번호로는 즉시 로그인할 수 없고, 이미 로그인해 있던 세션도 바로

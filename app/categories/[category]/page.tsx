@@ -31,15 +31,17 @@ export default async function CategoryPage({
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
-      <nav className="mb-6 flex gap-2 border-b border-gray-200">
+      {/* 좁은 화면에서는 라벨 3개가 한 줄에 안 들어간다. 두 줄로 접히면 읽기 불편하므로
+          라벨은 한 줄로 유지하고 탭 줄만 가로로 스크롤되게 한다. */}
+      <nav className="mb-6 -mx-4 flex gap-2 overflow-x-auto border-b border-gray-200 px-4">
         {VALID_CATEGORIES.map((value) => (
           <Link
             key={value}
             href={`/categories/${value}`}
             className={
               value === activeCategory
-                ? "border-b-2 border-brand px-3 py-2 text-sm font-medium text-brand"
-                : "px-3 py-2 text-sm text-gray-500 hover:text-brand"
+                ? "shrink-0 whitespace-nowrap border-b-2 border-brand px-3 py-2 text-sm font-medium text-brand"
+                : "shrink-0 whitespace-nowrap px-3 py-2 text-sm text-gray-500 hover:text-brand"
             }
           >
             {CATEGORY_LABELS[value]}

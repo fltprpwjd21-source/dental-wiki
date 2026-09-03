@@ -16,13 +16,13 @@ export default function HeaderSearch() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mx-auto flex w-full max-w-md gap-2">
+    <form onSubmit={handleSubmit} className="flex w-full gap-2 md:mx-auto md:max-w-md">
       <input
         type="text"
         value={value}
         onChange={(event) => setValue(event.target.value)}
         placeholder="궁금한 내용을 검색해보세요"
-        className="w-full rounded-full border border-gray-300 px-4 py-1.5 text-sm text-ink focus:border-brand focus:outline-none"
+        className="min-w-0 flex-1 rounded-full border border-gray-300 px-4 py-1.5 text-sm text-ink focus:border-brand focus:outline-none"
       />
       <button
         type="submit"
