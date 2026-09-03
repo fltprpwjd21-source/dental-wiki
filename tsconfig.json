@@ -6,6 +6,9 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // 테스트가 lib/*.ts 를 확장자까지 붙여 import 한다.
+    // Node 는 ESM import 에 정확한 파일명을 요구하므로 이 옵션이 필요하다.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

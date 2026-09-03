@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ip = getClientIp(request);
+  const ip = getClientIp(request.headers);
   const supabase = getServerSupabaseClient();
 
   const { data: guard, error: guardError } = await supabase.rpc("login_guard_check", {

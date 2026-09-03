@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm test && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test tests/unit/",
+    "test:api": "node --test tests/api/",
     "seed:docs": "node --env-file=.env scripts/seed-documents.mjs"
   },
   "dependencies": {
