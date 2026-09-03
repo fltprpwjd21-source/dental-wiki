@@ -13,9 +13,11 @@ export default function QaScreen() {
   const [sources, setSources] = useState<Source[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const hasAutoRun = useRef(false);
+  const lastRunQuestion = useRef<string | null>(null);
+  const [question, setQuestion] = useState<string | null>(null);
 
   async function runSearch(text: string) {
+    setQuestion(text);
     setError(null);
     setAnswer(null);
     setSources([]);
@@ -44,10 +46,13 @@ export default function QaScreen() {
   }
 
   // 맨 위 헤더 검색창에서 넘어온 ?q= 를 읽어 자동 실행한다 (질문 입력창은 헤더에만 있음)
+  // 이 화면은 홈(/)이므로 헤더에서 다시 검색해도 컴포넌트가 다시 만들어지지 않는다.
+  // 그래서 "한 번 실행했는가"(boolean)로 막으면 두 번째 질문이 무시된다.
+  // "어떤 질문을 실행했는가"를 기억해 질문이 바뀔 때마다 다시 검색한다.
   useEffect(() => {
     const q = searchParams.get("q");
-    if (q && !hasAutoRun.current) {
-      hasAutoRun.current = true;
+    if (q && q !== lastRunQuestion.current) {
+      lastRunQuestion.current = q;
       runSearch(q);
     }
   }, [searchParams]);
@@ -74,9 +79,19 @@ export default function QaScreen() {
       {isSubmitting && <p className="text-sm text-brand-muted">검색 중...</p>}
 
       {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
+        <div role="alert" className="space-y-2">
+          <p className="text-sm text-red-600">{error}</p>
+          {question && (
+            <button
+              type="button"
+              onClick={() => runSearch(question)}
+              disabled={isSubmitting}
+              className="rounded border border-brand px-3 py-1.5 text-sm text-brand hover:bg-surface disabled:opacity-50"
+            >
+              다시 시도
+            </button>
+          )}
+        </div>
       )}
 
       {!isSubmitting && !error && !answer && (
