@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import NoteTree from "@/components/notes/NoteTree";
 import NoteEditor from "@/components/notes/NoteEditor";
+import FolderView from "@/components/notes/FolderView";
 import TrashPanel from "@/components/notes/TrashPanel";
 import { buildTree, type FlatNode, type TreeNode } from "@/lib/notes/tree";
 
@@ -106,6 +107,8 @@ export default function NotesApp() {
   const attachments = selected
     ? (flatNodes ?? []).filter((n) => n.type === "attachment" && n.parent_id === selected.id)
     : [];
+  const selectedFolderNode =
+    selected?.type === "folder" ? flatNodes?.find((n) => n.id === selected.id) ?? null : null;
 
   // min-h-0: 플렉스 아이템은 기본적으로 min-height:auto라서, 내용이 길어지면
   // 지정한 h-[calc(...)]를 무시하고 페이지 전체가 늘어난다. 트리·본문 각각
@@ -163,10 +166,13 @@ export default function NotesApp() {
               onAttachmentsChanged={loadTree}
             />
           )}
-          {selected?.type === "folder" && (
-            <p className="p-4 text-sm text-gray-400">
-              &quot;{selected.name}&quot; 폴더입니다. 왼쪽 트리에서 하위 노트나 폴더를 만들어보세요.
-            </p>
+          {selected?.type === "folder" && selectedFolderNode && (
+            <FolderView
+              key={selected.id}
+              node={selectedFolderNode}
+              onRenamed={handleRenamed}
+              onTrashed={handleTrashed}
+            />
           )}
         </div>
       </div>

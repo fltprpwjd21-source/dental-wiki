@@ -38,7 +38,7 @@ export async function withSession(
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: SESSION_TTL_MS / 1000,
+    // maxAge 없음 — 로그인 때와 마찬가지로 세션 쿠키로 유지한다(session.ts 참고).
     path: "/",
   });
 

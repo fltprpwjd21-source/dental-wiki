@@ -95,7 +95,9 @@ export async function POST(request: NextRequest) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: SESSION_TTL_MS / 1000,
+    // maxAge를 주지 않는다 — 브라우저를 완전히 닫으면(모든 창) 이 쿠키도 함께
+    // 사라지게 하기 위해서다(세션 쿠키). 토큰 안의 exp(SESSION_TTL_MS)는 브라우저를
+    // 계속 켜둔 채로 오래 방치했을 때를 대비한 상한선으로만 남겨둔다.
     path: "/",
   });
   return response;

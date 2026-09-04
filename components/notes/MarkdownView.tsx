@@ -1,11 +1,52 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 // Design §7: react-markdown은 기본적으로 원문 속 HTML을 렌더링하지 않는다
 // (React 엘리먼트로만 변환) — 그래서 <script> 같은 삽입 HTML이 실행되지 않는다.
 // 별도 sanitize 라이브러리가 필요 없는 이유가 이것이다.
+
+// 첨부파일 업로드 시 노트 본문에 끼워 넣는 링크 형식(/api/notes/{id}/content)과
+// 정확히 일치하는지 검사한다. 이 패턴이 아닌 일반 링크는 절대 건드리지 않는다.
+const ATTACHMENT_LINK = /^\/api\/notes\/[0-9a-f-]{36}\/content$/i;
+
+function textOf(node: React.ReactNode): string {
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  return "";
+}
+
+// 사진은 마크다운 이미지 문법(![](...))이라 기본 <img> 렌더링만으로 바로
+// 보이지만, PDF는 링크([📎 이름](...))라 그냥 두면 텍스트 한 줄로만 보였다.
+// "사진처럼 바로 보이면 좋겠다"는 요청에 따라, 첨부 링크 중 이름이 .pdf로
+// 끝나는 것만 골라 <iframe>으로 미리보기를 끼워 넣는다 — 이 링크는 우리가
+// 업로드 흐름에서 직접 만든 same-origin 인증 라우트라 iframe에 넣어도 안전하다.
+function AttachmentLink({ href, children }: { href?: string; children?: React.ReactNode }) {
+  const text = textOf(children);
+  if (href && ATTACHMENT_LINK.test(href) && /\.pdf$/i.test(text)) {
+    return (
+      <>
+        <iframe
+          src={href}
+          title={text}
+          className="my-2 h-[70vh] max-h-[600px] w-full rounded border border-gray-200"
+        />
+        <a href={href} target="_blank" rel="noreferrer" className="text-xs text-gray-500 underline">
+          {text} · 새 창에서 열기
+        </a>
+      </>
+    );
+  }
+  return (
+    <a href={href} target={href?.startsWith("/") ? undefined : "_blank"} rel="noreferrer">
+      {children}
+    </a>
+  );
+}
+
+const components: Components = { a: AttachmentLink };
+
 export default function MarkdownView({ content }: { content: string }) {
   if (!content.trim()) {
     return <p className="text-sm text-gray-400">(빈 노트)</p>;
@@ -28,7 +69,9 @@ export default function MarkdownView({ content }: { content: string }) {
         [&_td]:border [&_td]:border-gray-200 [&_td]:px-2 [&_td]:py-1
         [&_blockquote]:border-l-2 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:text-gray-500"
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
