@@ -40,6 +40,9 @@ export default async function AppHeader() {
                 </span>
                 <LogoutButton />
               </span>
+              <Link href="/files" className="text-brand hover:underline">
+                파일함
+              </Link>
               {session.isAdmin && (
                 <Link href="/settings" className="text-brand hover:underline">
                   설정
