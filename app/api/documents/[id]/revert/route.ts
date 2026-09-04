@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
-import { createEmbedding } from "@/lib/embeddings";
+import { buildDocumentPayload } from "@/lib/document-write";
 import { isUuid } from "@/lib/uuid";
 
 // PLAN 11번: 로그에서 선택한 이전 버전으로 되돌린다. 되돌리기도 하나의 로그(action: revert)로 남는다.
@@ -43,8 +43,9 @@ export async function POST(
     return NextResponse.json({ error: "되돌릴 버전을 찾을 수 없습니다." }, { status: 404 });
   }
 
-  const embedding = await createEmbedding(
-    `${targetLog.new_title}\n\n${targetLog.new_content}`,
+  const { embedding, chunks } = await buildDocumentPayload(
+    targetLog.new_title,
+    targetLog.new_content,
   );
 
   const { data, error } = await supabase.rpc("revert_document", {
@@ -52,6 +53,7 @@ export async function POST(
     p_log_id: logId,
     p_embedding: embedding,
     p_employee_id: session.employeeId,
+    p_chunks: chunks,
   });
 
   if (error) {

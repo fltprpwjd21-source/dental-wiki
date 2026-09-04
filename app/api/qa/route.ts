@@ -3,7 +3,15 @@ import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { createEmbedding } from "@/lib/embeddings";
 
-const MATCH_THRESHOLD = 0.5;
+// 하이브리드 검색(의미 0.6 + 키워드 0.4) 점수 기준.
+// 실제 질문 14개로 측정해 정한 값이다.
+//   정답이 있어야 하는 질문 10개: 최저 0.2172 ~ 최고 0.4530  (전부 1위 정답)
+//   위키에 없는 질문 4개:        최고 0.2713
+// 두 구간이 조금 겹쳐서 문턱값만으로는 완전히 못 가른다. 그래서 방어선을 두 겹으로 둔다.
+//   1차: 이 문턱값이 명백히 무관한 문서를 거른다
+//   2차: 근거가 넘어가도 아래 프롬프트가 "문서에 없으면 추측하지 말라"고 지시한다
+// 0.22 이상으로 올리면 정답인 질문이 탈락하기 시작해 0.2 로 둔다.
+const MATCH_THRESHOLD = 0.2;
 const MATCH_COUNT = 5;
 const NO_MATCH_ANSWER = "위키에 등록된 정보가 없습니다.";
 const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
@@ -31,8 +39,11 @@ export async function POST(request: NextRequest) {
   const queryEmbedding = await createEmbedding(question);
 
   const supabase = getServerSupabaseClient();
+  // 의미(임베딩)와 키워드를 함께 쓴다. 임베딩만으로는 "사랑니"·"실란트" 같은
+  // 한국어 고유명사를 놓쳐 엉뚱한 문서가 1위로 올라온다 (20260904000701 마이그레이션 참고)
   const { data: matches, error } = await supabase.rpc("match_documents", {
     query_embedding: queryEmbedding,
+    query_text: question,
     match_threshold: MATCH_THRESHOLD,
     match_count: MATCH_COUNT,
   });
@@ -82,8 +93,18 @@ async function createAnswer(question: string, documents: MatchedDocument[]): Pro
       messages: [
         {
           role: "system",
-          content:
-            "너는 치과위키의 Q&A 도우미다. 아래 제공된 문서 내용만 근거로 답변하고, 문서에 없는 내용은 추측하지 말고 모른다고 답해라. 한국어로 간결하게 답한다.",
+          // PRD 5번①의 규칙을 그대로 지시한다.
+          // "모른다고 답해라"만 적었더니 AI가 "모릅니다"라고 제멋대로 답해,
+          // 화면에 정해진 문구가 나오지 않았다. 그래서 문구를 그대로 못박는다.
+          // 또 문서의 "자주 나오는 질문" 절을 베껴 "A: "를 붙이는 일이 있어 함께 막는다.
+          content: [
+            "너는 치과위키의 Q&A 도우미다.",
+            "아래 제공된 문서 내용만 근거로 답한다. 문서에 없는 내용은 절대 추측하지 않는다.",
+            `문서에서 답을 찾을 수 없으면 다른 말을 덧붙이지 말고 정확히 이 문장만 답한다: "${NO_MATCH_ANSWER}"`,
+            "금액·수치는 문서에 적힌 값을 그대로 옮긴다. 계산하거나 반올림하지 않는다.",
+            "한국어로 간결하게 답한다.",
+            '"Q:" 나 "A:" 같은 접두사를 붙이지 않는다. 문장으로만 답한다.',
+          ].join("\n"),
         },
         { role: "user", content: `문서:\n${context}\n\n질문: ${question}` },
       ],

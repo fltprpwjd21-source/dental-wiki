@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
-import { createEmbedding } from "@/lib/embeddings";
+import { buildDocumentPayload } from "@/lib/document-write";
 import type { DocumentCategory } from "@/lib/categories";
 
 const VALID_CATEGORIES: DocumentCategory[] = ["handover", "insurance", "policy"];
@@ -28,7 +28,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "제목과 본문을 입력해주세요." }, { status: 400 });
   }
 
-  const embedding = await createEmbedding(`${title}\n\n${content}`);
+  // 검색은 문서 전체가 아니라 절 단위 조각으로 한다 (lib/chunks.ts 참고)
+  const { embedding, chunks } = await buildDocumentPayload(title, content);
   const supabase = getServerSupabaseClient();
 
   const { data, error } = await supabase.rpc("create_document", {
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
     p_content: content,
     p_embedding: embedding,
     p_employee_id: session.employeeId,
+    p_chunks: chunks,
   });
 
   if (error || !data?.[0]) {

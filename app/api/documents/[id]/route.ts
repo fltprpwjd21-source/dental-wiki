@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
-import { createEmbedding } from "@/lib/embeddings";
+import { buildDocumentPayload } from "@/lib/document-write";
 import { isUuid } from "@/lib/uuid";
 
 // PLAN 7·8번: 문서 수정. 제목과 본문을 모두 고칠 수 있고, 변경 전 값은 로그에 남는다.
@@ -29,7 +29,7 @@ export async function PATCH(
     return NextResponse.json({ error: "제목과 본문을 입력해주세요." }, { status: 400 });
   }
 
-  const embedding = await createEmbedding(`${title}\n\n${content}`);
+  const { embedding, chunks } = await buildDocumentPayload(title, content);
   const supabase = getServerSupabaseClient();
 
   const { data, error } = await supabase.rpc("update_document", {
@@ -38,6 +38,7 @@ export async function PATCH(
     p_content: content,
     p_embedding: embedding,
     p_employee_id: session.employeeId,
+    p_chunks: chunks,
   });
 
   if (error) {
