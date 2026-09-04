@@ -40,8 +40,8 @@ export default async function AppHeader() {
                 </span>
                 <LogoutButton />
               </span>
-              <Link href="/files" className="text-brand hover:underline">
-                파일함
+              <Link href="/notes" className="text-brand hover:underline">
+                노트
               </Link>
               {session.isAdmin && (
                 <Link href="/settings" className="text-brand hover:underline">
