@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const ACTION_LABELS: Record<string, string> = {
   create: "최초 등록",
@@ -20,13 +21,22 @@ type LogEntry = {
 };
 
 // DESIGN.md: 문서 화면 하단에 접혀있고, 펼치면 이전 수정 이력과 되돌리기 버튼을 확인할 수 있다.
+//
+// version(낙관적 잠금): 부모(DocumentDetail)가 지금 화면에 띄운 문서의 버전 번호를
+// 내려준다. 되돌리기를 누른 사이 다른 사람이 먼저 문서를 고쳤으면 서버가 409를
+// 돌려주는데, 여기서는 되돌리기가 텍스트 입력이 아니라 버튼 클릭 하나라 잃을
+// 초안이 없으므로 곧바로 새로고침한다(DocumentDetail의 수정 화면과는 다르게
+// 사용자에게 "새로고침 할지" 물어볼 필요가 없다).
 export default function DocumentLogSection({
   documentId,
+  version,
   onReverted,
 }: {
   documentId: string;
-  onReverted: (newTitle: string, newContent: string) => void;
+  version: number;
+  onReverted: (newTitle: string, newContent: string, newVersion: number) => void;
 }) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [logs, setLogs] = useState<LogEntry[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -66,14 +76,18 @@ export default function DocumentLogSection({
       const response = await fetch(`/api/documents/${documentId}/revert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logId }),
+        body: JSON.stringify({ logId, expectedVersion: version }),
       });
       const data = await response.json();
       if (!response.ok) {
         setError(data.error ?? "되돌리기에 실패했습니다.");
+        if (response.status === 409) {
+          // 되돌리기는 버튼 클릭 하나라 잃을 초안이 없다. 바로 최신 상태로 맞춘다.
+          router.refresh();
+        }
         return;
       }
-      onReverted(data.document.title, data.document.content);
+      onReverted(data.document.title, data.document.content, data.document.version);
       await loadLogs();
     } catch {
       setError("되돌리기 중 오류가 발생했습니다.");

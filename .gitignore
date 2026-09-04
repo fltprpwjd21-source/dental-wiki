@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# bkit plugin 로컬 세션 캐시 (커밋 불필요)
+/.bkit/

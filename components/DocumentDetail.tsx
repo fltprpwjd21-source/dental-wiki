@@ -10,16 +10,25 @@ type Document = {
   category: DocumentCategory;
   title: string;
   content: string;
+  version: number;
 };
 
+// 부모(app/documents/[id]/page.tsx)가 key={document.version} 을 붙여서 렌더링한다.
+// router.refresh() 로 새 version이 내려오면(다른 사람이 먼저 고쳤거나, 아래
+// "새로고침" 버튼을 눌렀거나) React가 이 컴포넌트를 통째로 다시 마운트해
+// title·content·version·isEditing이 새 document 기준으로 깨끗하게 다시 시작된다.
+// useEffect로 직접 setState 하는 방법도 있지만, 이 방식(리액트 공식 권장 패턴)이
+// 상태가 어긋날 여지가 없고 더 간단하다.
 export default function DocumentDetail({ document }: { document: Document }) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(document.title);
   const [content, setContent] = useState(document.content);
+  const [version, setVersion] = useState(document.version);
   const [titleDraft, setTitleDraft] = useState(document.title);
   const [contentDraft, setContentDraft] = useState(document.content);
   const [error, setError] = useState<string | null>(null);
+  const [isConflict, setIsConflict] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [logRefreshKey, setLogRefreshKey] = useState(0);
 
@@ -27,18 +36,21 @@ export default function DocumentDetail({ document }: { document: Document }) {
     setTitleDraft(title);
     setContentDraft(content);
     setError(null);
+    setIsConflict(false);
     setIsEditing(true);
   }
 
   function cancelEditing() {
     setIsEditing(false);
     setError(null);
+    setIsConflict(false);
   }
 
   // 되돌리기는 제목과 본문을 함께 복원한다
-  function handleReverted(newTitle: string, newContent: string) {
+  function handleReverted(newTitle: string, newContent: string, newVersion: number) {
     setTitle(newTitle);
     setContent(newContent);
+    setVersion(newVersion);
     if (isEditing) {
       setIsEditing(false);
     }
@@ -47,23 +59,32 @@ export default function DocumentDetail({ document }: { document: Document }) {
 
   async function handleSave() {
     setError(null);
+    setIsConflict(false);
     setIsSaving(true);
 
     try {
       const response = await fetch(`/api/documents/${document.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: titleDraft, content: contentDraft }),
+        body: JSON.stringify({
+          title: titleDraft,
+          content: contentDraft,
+          expectedVersion: version,
+        }),
       });
       const data = await response.json();
 
       if (!response.ok) {
         setError(data.error ?? "수정에 실패했습니다.");
+        // 다른 사람이 먼저 저장한 경우. 지금 입력 중인 내용은 그대로 두고
+        // (누르지 않는 한 지우지 않는다) "새로고침" 버튼만 추가로 보여준다.
+        setIsConflict(response.status === 409);
         return;
       }
 
       setTitle(data.document.title);
       setContent(data.document.content);
+      setVersion(data.document.version);
       setIsEditing(false);
       setLogRefreshKey((key) => key + 1);
       router.refresh();
@@ -107,9 +128,15 @@ export default function DocumentDetail({ document }: { document: Document }) {
           </div>
 
           {error && (
-            <p role="alert" className="text-sm text-red-600">
-              {error}
-            </p>
+            <div role="alert" className="space-y-2">
+              <p className="text-sm text-red-600">{error}</p>
+              {isConflict && (
+                <p className="text-xs text-gray-500">
+                  지금 작성 중인 내용은 그대로 있습니다. 새로고침하면 최신 내용을
+                  볼 수 있지만, 지금 쓰던 내용은 사라집니다.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="flex gap-2">
@@ -129,6 +156,15 @@ export default function DocumentDetail({ document }: { document: Document }) {
             >
               취소
             </button>
+            {isConflict && (
+              <button
+                type="button"
+                onClick={() => router.refresh()}
+                className="rounded border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+              >
+                새로고침
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -148,6 +184,7 @@ export default function DocumentDetail({ document }: { document: Document }) {
       <DocumentLogSection
         key={logRefreshKey}
         documentId={document.id}
+        version={version}
         onReverted={handleReverted}
       />
     </main>

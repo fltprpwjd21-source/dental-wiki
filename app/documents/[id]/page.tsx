@@ -23,7 +23,7 @@ export default async function DocumentPage({
   const supabase = getServerSupabaseClient();
   const { data: document } = await supabase
     .from("documents")
-    .select("id, category, title, content")
+    .select("id, category, title, content, version")
     .eq("id", id)
     .maybeSingle();
 
@@ -31,5 +31,8 @@ export default async function DocumentPage({
     notFound();
   }
 
-  return <DocumentDetail document={document} />;
+  // key={document.version}: 다른 사람이 먼저 저장해 버전이 바뀌면(또는 화면의
+  // "새로고침" 버튼을 누르면) DocumentDetail을 통째로 다시 마운트해 최신 내용으로
+  // 깨끗하게 다시 시작한다 (components/DocumentDetail.tsx 상단 주석 참고).
+  return <DocumentDetail key={document.version} document={document} />;
 }

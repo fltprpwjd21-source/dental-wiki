@@ -61,13 +61,17 @@ export default function QaScreen() {
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8">
       <div>
         <h1 className="mb-2 text-lg font-semibold text-brand">치과위키에 질문하기</h1>
-        <nav className="flex gap-3">
+        {/* DESIGN.md: "상단에 3개 카테고리 바로가기". 예전엔 본문 글자 사이에 밑줄 친
+            텍스트 링크로만 있어 안내 문구처럼 보였다. 카테고리 탐색 화면의 탭 모양을
+            그대로 재사용해 눌러야 할 바로가기라는 게 분명히 보이게 했다
+            (좁은 화면에서 가로 스크롤되는 것까지 그 화면에서 이미 검증된 패턴이다). */}
+        <nav className="-mx-4 flex gap-2 overflow-x-auto border-b border-gray-200 px-4">
           {(Object.entries(CATEGORY_LABELS) as [DocumentCategory, string][]).map(
             ([value, label]) => (
               <Link
                 key={value}
                 href={`/categories/${value}`}
-                className="text-sm text-accent underline hover:text-brand-dark"
+                className="shrink-0 whitespace-nowrap px-3 py-2 text-sm text-gray-500 hover:text-brand"
               >
                 {label}
               </Link>
