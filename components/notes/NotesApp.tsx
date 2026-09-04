@@ -3,14 +3,16 @@
 import { useEffect, useState } from "react";
 import NoteTree from "@/components/notes/NoteTree";
 import NoteEditor from "@/components/notes/NoteEditor";
-import ImageView from "@/components/notes/ImageView";
 import TrashPanel from "@/components/notes/TrashPanel";
 import { buildTree, type FlatNode, type TreeNode } from "@/lib/notes/tree";
 
-type Selected = { id: string; type: TreeNode["type"]; name: string } | null;
+type Selected = { id: string; type: "folder" | "note"; name: string } | null;
 
 // Design §5.1: 옵시디언식 2단 레이아웃. 좁은 화면에서는 트리/본문 중 하나만
 // 보여주고 "← 트리로" 버튼으로 전환한다 (카테고리 앱과 같은 모바일 패턴).
+//
+// 사진·PDF(attachment)는 트리에서 독립적으로 선택할 대상이 아니다 — 노트 안에
+// 딸린 첨부파일이라, 트리에는 folder/note만 보이고 선택도 그 둘만 가능하다.
 export default function NotesApp() {
   const [flatNodes, setFlatNodes] = useState<FlatNode[] | null>(null);
   const [selected, setSelected] = useState<Selected>(null);
@@ -51,18 +53,18 @@ export default function NotesApp() {
   }, []);
 
   function selectNode(node: TreeNode) {
+    // buildTree()가 attachment 타입은 애초에 트리에서 걸러내므로, 여기 들어오는
+    // node.type은 실제로는 항상 folder/note다 (TypeScript는 그걸 모를 뿐).
+    if (node.type !== "folder" && node.type !== "note") return;
     setSelected({ id: node.id, type: node.type, name: node.name });
     setMobileView("content");
   }
 
-  async function handleCreateFolder(parentId: string | null) {
-    const name = window.prompt("새 폴더 이름을 입력하세요");
-    if (!name?.trim()) return;
-
+  async function handleCreateFolder(parentId: string | null, name: string) {
     const response = await fetch("/api/notes/folders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ parentId, name: name.trim() }),
+      body: JSON.stringify({ parentId, name }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -72,14 +74,11 @@ export default function NotesApp() {
     await loadTree();
   }
 
-  async function handleCreateNote(parentId: string | null) {
-    const name = window.prompt("새 노트 이름을 입력하세요");
-    if (!name?.trim()) return;
-
+  async function handleCreateNote(parentId: string | null, name: string) {
     const response = await fetch("/api/notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ parentId, name: name.trim(), content: "" }),
+      body: JSON.stringify({ parentId, name, content: "" }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -104,6 +103,9 @@ export default function NotesApp() {
   }
 
   const tree = flatNodes ? buildTree(flatNodes) : [];
+  const attachments = selected
+    ? (flatNodes ?? []).filter((n) => n.type === "attachment" && n.parent_id === selected.id)
+    : [];
 
   // min-h-0: 플렉스 아이템은 기본적으로 min-height:auto라서, 내용이 길어지면
   // 지정한 h-[calc(...)]를 무시하고 페이지 전체가 늘어난다. 트리·본문 각각
@@ -149,13 +151,17 @@ export default function NotesApp() {
 
         <div className="min-h-0 flex-1">
           {!selected && (
-            <p className="p-4 text-sm text-gray-400">왼쪽 트리에서 노트나 이미지를 선택하세요.</p>
+            <p className="p-4 text-sm text-gray-400">왼쪽 트리에서 폴더나 노트를 선택하세요.</p>
           )}
           {selected?.type === "note" && (
-            <NoteEditor key={selected.id} nodeId={selected.id} onRenamed={handleRenamed} onTrashed={handleTrashed} />
-          )}
-          {selected?.type === "image" && (
-            <ImageView key={selected.id} nodeId={selected.id} name={selected.name} onTrashed={handleTrashed} />
+            <NoteEditor
+              key={selected.id}
+              nodeId={selected.id}
+              attachments={attachments}
+              onRenamed={handleRenamed}
+              onTrashed={handleTrashed}
+              onAttachmentsChanged={loadTree}
+            />
           )}
           {selected?.type === "folder" && (
             <p className="p-4 text-sm text-gray-400">

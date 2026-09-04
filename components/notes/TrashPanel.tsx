@@ -4,13 +4,13 @@ import { useState } from "react";
 
 type TrashedNode = {
   id: string;
-  type: "folder" | "note" | "image";
+  type: "folder" | "note" | "attachment";
   name: string;
   trashedAt: string;
   purgeAt: string;
 };
 
-const TYPE_ICON: Record<TrashedNode["type"], string> = { folder: "📁", note: "📝", image: "🖼" };
+const TYPE_ICON: Record<TrashedNode["type"], string> = { folder: "📁", note: "📝", attachment: "📎" };
 
 function daysUntil(iso: string): number {
   return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));

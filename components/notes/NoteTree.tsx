@@ -6,14 +6,20 @@ import type { TreeNode } from "@/lib/notes/tree";
 const TYPE_ICON: Record<TreeNode["type"], string> = {
   folder: "📁",
   note: "📝",
-  image: "🖼",
+  attachment: "📎",
 };
 
 function collectAll(nodes: TreeNode[]): TreeNode[] {
   return nodes.flatMap((node) => [node, ...collectAll(node.children)]);
 }
 
-// Design §5.1·§4.1: 왼쪽 트리 — 폴더 펼치기/접기, 노트/이미지 선택, 이름 검색.
+type Creating = { type: "folder" | "note"; parentId: string | null; parentName: string | null };
+
+// Design §5.1·§4.1: 왼쪽 트리 — 폴더 펼치기/접기, 노트 선택, 이름 검색.
+//
+// 폴더·노트 생성은 window.prompt()를 쓰지 않는다 — 실제 배포 환경(병원 업무용
+// 브라우저)에서 "prompt() is not supported" 예외가 나며 조용히 실패하는 게
+// 확인됐다. 그래서 화면 안 입력창(인라인 폼)으로 만든다.
 export default function NoteTree({
   tree,
   selectedId,
@@ -24,10 +30,12 @@ export default function NoteTree({
   tree: TreeNode[];
   selectedId: string | null;
   onSelect: (node: TreeNode) => void;
-  onCreateFolder: (parentId: string | null) => void;
-  onCreateNote: (parentId: string | null) => void;
+  onCreateFolder: (parentId: string | null, name: string) => void;
+  onCreateNote: (parentId: string | null, name: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState<Creating | null>(null);
+  const [nameInput, setNameInput] = useState("");
   const trimmedQuery = query.trim();
 
   // 서버 검색 API(/api/notes/search)도 있지만, 이미 트리 전체를 메모리에
@@ -35,6 +43,26 @@ export default function NoteTree({
   const searchResults = trimmedQuery
     ? collectAll(tree).filter((node) => node.name.toLowerCase().includes(trimmedQuery.toLowerCase()))
     : null;
+
+  function startCreating(type: "folder" | "note", parentId: string | null, parentName: string | null) {
+    setCreating({ type, parentId, parentName });
+    setNameInput("");
+  }
+
+  function submitCreating() {
+    if (!creating) return;
+    const name = nameInput.trim();
+    if (!name) {
+      setCreating(null);
+      return;
+    }
+    if (creating.type === "folder") {
+      onCreateFolder(creating.parentId, name);
+    } else {
+      onCreateNote(creating.parentId, name);
+    }
+    setCreating(null);
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -56,27 +84,64 @@ export default function NoteTree({
             depth={0}
             selectedId={selectedId}
             onSelect={onSelect}
-            onCreateFolder={onCreateFolder}
-            onCreateNote={onCreateNote}
+            onStartCreating={startCreating}
           />
         )}
       </div>
-      <div className="flex gap-2 border-t border-gray-100 p-2">
-        <button
-          type="button"
-          onClick={() => onCreateFolder(null)}
-          className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-xs hover:bg-surface"
-        >
-          + 새 폴더
-        </button>
-        <button
-          type="button"
-          onClick={() => onCreateNote(null)}
-          className="flex-1 rounded border border-brand px-2 py-1.5 text-xs text-brand hover:bg-surface"
-        >
-          + 새 노트
-        </button>
-      </div>
+
+      {creating ? (
+        <div className="space-y-2 border-t border-gray-100 p-2">
+          <p className="text-xs text-gray-500">
+            {creating.parentName ? `"${creating.parentName}" 안에` : "최상위에"} 새{" "}
+            {creating.type === "folder" ? "폴더" : "노트"} 만들기
+          </p>
+          <input
+            autoFocus
+            type="text"
+            value={nameInput}
+            onChange={(event) => setNameInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") submitCreating();
+              if (event.key === "Escape") setCreating(null);
+            }}
+            placeholder="이름 입력"
+            className="w-full rounded border border-brand px-2 py-1 text-xs focus:outline-none"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={submitCreating}
+              className="flex-1 rounded bg-brand px-2 py-1.5 text-xs text-white hover:bg-brand-dark"
+            >
+              만들기
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreating(null)}
+              className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-xs hover:bg-surface"
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2 border-t border-gray-100 p-2">
+          <button
+            type="button"
+            onClick={() => startCreating("folder", null, null)}
+            className="flex-1 rounded border border-gray-300 px-2 py-1.5 text-xs hover:bg-surface"
+          >
+            + 새 폴더
+          </button>
+          <button
+            type="button"
+            onClick={() => startCreating("note", null, null)}
+            className="flex-1 rounded border border-brand px-2 py-1.5 text-xs text-brand hover:bg-surface"
+          >
+            + 새 노트
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -86,15 +151,13 @@ function TreeLevel({
   depth,
   selectedId,
   onSelect,
-  onCreateFolder,
-  onCreateNote,
+  onStartCreating,
 }: {
   nodes: TreeNode[];
   depth: number;
   selectedId: string | null;
   onSelect: (node: TreeNode) => void;
-  onCreateFolder: (parentId: string | null) => void;
-  onCreateNote: (parentId: string | null) => void;
+  onStartCreating: (type: "folder" | "note", parentId: string | null, parentName: string | null) => void;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -139,7 +202,7 @@ function TreeLevel({
                   <button
                     type="button"
                     title="이 폴더에 새 폴더"
-                    onClick={() => onCreateFolder(node.id)}
+                    onClick={() => onStartCreating("folder", node.id, node.name)}
                     className="hover:text-brand"
                   >
                     📁+
@@ -147,7 +210,7 @@ function TreeLevel({
                   <button
                     type="button"
                     title="이 폴더에 새 노트"
-                    onClick={() => onCreateNote(node.id)}
+                    onClick={() => onStartCreating("note", node.id, node.name)}
                     className="hover:text-brand"
                   >
                     📝+
@@ -161,8 +224,7 @@ function TreeLevel({
                 depth={depth + 1}
                 selectedId={selectedId}
                 onSelect={onSelect}
-                onCreateFolder={onCreateFolder}
-                onCreateNote={onCreateNote}
+                onStartCreating={onStartCreating}
               />
             )}
           </li>

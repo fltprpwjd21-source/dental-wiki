@@ -4,8 +4,9 @@ import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { createDownloadUrl } from "@/lib/file-storage";
 import { isUuid } from "@/lib/uuid";
 
-// Design §2.2·§4.2: 비공개 버킷의 이미지를 <img src="..">로 바로 쓸 수 있게,
-// 로그인 확인 후 Supabase 서명 URL로 리다이렉트한다. 버킷 자체는 계속 비공개다.
+// Design §2.2·§4.2: 비공개 버킷의 첨부파일(사진·PDF)을 <img src>나 다운로드
+// 링크로 바로 쓸 수 있게, 로그인 확인 후 Supabase 서명 URL로 리다이렉트한다.
+// 버킷 자체는 계속 비공개다.
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -23,7 +24,7 @@ export async function GET(
       .eq("id", id)
       .maybeSingle();
 
-    if (!node || node.type !== "image" || node.status !== "active" || !node.storage_path) {
+    if (!node || node.type !== "attachment" || node.status !== "active" || !node.storage_path) {
       return NextResponse.json({ error: "찾을 수 없습니다." }, { status: 404 });
     }
 
@@ -31,7 +32,7 @@ export async function GET(
       const url = await createDownloadUrl(node.storage_path);
       return NextResponse.redirect(url, 307);
     } catch {
-      return NextResponse.json({ error: "이미지를 불러오지 못했습니다." }, { status: 500 });
+      return NextResponse.json({ error: "첨부파일을 불러오지 못했습니다." }, { status: 500 });
     }
   });
 }

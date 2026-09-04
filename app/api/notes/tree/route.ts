@@ -3,12 +3,16 @@ import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 
 // Design §4.1: 활성 노드 전체를 평면 배열로 돌려주고, 화면에서 트리로 조립한다.
+// attachment 타입도 함께 내려준다 — 트리에는 안 그려지지만(폴더·노트만 표시),
+// 노트 편집 화면에서 "이 노트에 속한 첨부파일" 목록을 만들 때 그대로 재사용한다.
 export async function GET() {
   return withSession(async () => {
     const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from("nodes")
-      .select("id, parent_id, type, name, version, created_by, created_at, updated_at")
+      .select(
+        "id, parent_id, type, name, version, size_bytes, mime_type, created_by, created_at, updated_at",
+      )
       .eq("status", "active");
 
     if (error) {
