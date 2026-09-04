@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 
 // PLAN 15번: 관리자만 사원번호를 화이트리스트에서 삭제할 수 있다.
@@ -16,39 +16,37 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ employeeId: string }> },
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  }
-  if (!session.isAdmin) {
-    return NextResponse.json({ error: "관리자만 사용할 수 있습니다." }, { status: 403 });
-  }
+  return withSession(async (session) => {
+    if (!session.isAdmin) {
+      return NextResponse.json({ error: "관리자만 사용할 수 있습니다." }, { status: 403 });
+    }
 
-  const { employeeId } = await params;
+    const { employeeId } = await params;
 
-  // 본인을 지우면 그 즉시 스스로 로그아웃되고, 관리자가 아무도 없는 상태가 될 수 있다.
-  // 이 규칙 덕분에 관리자가 최소 한 명은 항상 남는다.
-  if (employeeId === session.employeeId) {
-    return NextResponse.json(
-      { error: "본인 계정은 삭제할 수 없습니다." },
-      { status: 400 },
-    );
-  }
+    // 본인을 지우면 그 즉시 스스로 로그아웃되고, 관리자가 아무도 없는 상태가 될 수 있다.
+    // 이 규칙 덕분에 관리자가 최소 한 명은 항상 남는다.
+    if (employeeId === session.employeeId) {
+      return NextResponse.json(
+        { error: "본인 계정은 삭제할 수 없습니다." },
+        { status: 400 },
+      );
+    }
 
-  const supabase = getServerSupabaseClient();
-  const { data: deleted, error } = await supabase
-    .from("employee_whitelist")
-    .delete()
-    .eq("employee_id", employeeId)
-    .select("employee_id")
-    .maybeSingle();
+    const supabase = getServerSupabaseClient();
+    const { data: deleted, error } = await supabase
+      .from("employee_whitelist")
+      .delete()
+      .eq("employee_id", employeeId)
+      .select("employee_id")
+      .maybeSingle();
 
-  if (error) {
-    return NextResponse.json({ error: "삭제에 실패했습니다." }, { status: 500 });
-  }
-  if (!deleted) {
-    return NextResponse.json({ error: "등록되지 않은 사원번호입니다." }, { status: 404 });
-  }
+    if (error) {
+      return NextResponse.json({ error: "삭제에 실패했습니다." }, { status: 500 });
+    }
+    if (!deleted) {
+      return NextResponse.json({ error: "등록되지 않은 사원번호입니다." }, { status: 404 });
+    }
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  });
 }

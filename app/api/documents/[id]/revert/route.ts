@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { buildDocumentPayload } from "@/lib/document-write";
 import { isUuid } from "@/lib/uuid";
@@ -14,64 +14,61 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  }
-
-  const { id } = await params;
-  if (!isUuid(id)) {
-    return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
-  }
-
-  const body = await request.json().catch(() => null);
-  const logId = typeof body?.logId === "string" ? body.logId : "";
-
-  if (!logId || !isUuid(logId)) {
-    return NextResponse.json({ error: "되돌릴 버전을 선택해주세요." }, { status: 400 });
-  }
-
-  const supabase = getServerSupabaseClient();
-
-  const { data: targetLog, error: logFetchError } = await supabase
-    .from("document_logs")
-    .select("document_id, new_title, new_content")
-    .eq("id", logId)
-    .maybeSingle();
-
-  if (logFetchError || !targetLog || targetLog.document_id !== id) {
-    return NextResponse.json({ error: "되돌릴 버전을 찾을 수 없습니다." }, { status: 404 });
-  }
-
-  const { embedding, chunks } = await buildDocumentPayload(
-    targetLog.new_title,
-    targetLog.new_content,
-  );
-
-  const { data, error } = await supabase.rpc("revert_document", {
-    p_id: id,
-    p_log_id: logId,
-    p_embedding: embedding,
-    p_employee_id: session.employeeId,
-    p_chunks: chunks,
-  });
-
-  if (error) {
-    if (error.message?.includes("LOG_NOT_FOUND")) {
-      return NextResponse.json({ error: "되돌릴 버전을 찾을 수 없습니다." }, { status: 404 });
-    }
-    if (error.message?.includes("DOCUMENT_NOT_FOUND")) {
+  return withSession(async (session) => {
+    const { id } = await params;
+    if (!isUuid(id)) {
       return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
     }
-    if (error.message?.includes("NO_CHANGES")) {
-      return NextResponse.json({ error: "이미 같은 내용입니다." }, { status: 400 });
+
+    const body = await request.json().catch(() => null);
+    const logId = typeof body?.logId === "string" ? body.logId : "";
+
+    if (!logId || !isUuid(logId)) {
+      return NextResponse.json({ error: "되돌릴 버전을 선택해주세요." }, { status: 400 });
     }
-    return NextResponse.json({ error: "되돌리기에 실패했습니다." }, { status: 500 });
-  }
 
-  if (!data?.[0]) {
-    return NextResponse.json({ error: "되돌리기에 실패했습니다." }, { status: 500 });
-  }
+    const supabase = getServerSupabaseClient();
 
-  return NextResponse.json({ document: data[0] });
+    const { data: targetLog, error: logFetchError } = await supabase
+      .from("document_logs")
+      .select("document_id, new_title, new_content")
+      .eq("id", logId)
+      .maybeSingle();
+
+    if (logFetchError || !targetLog || targetLog.document_id !== id) {
+      return NextResponse.json({ error: "되돌릴 버전을 찾을 수 없습니다." }, { status: 404 });
+    }
+
+    const { embedding, chunks } = await buildDocumentPayload(
+      targetLog.new_title,
+      targetLog.new_content,
+    );
+
+    const { data, error } = await supabase.rpc("revert_document", {
+      p_id: id,
+      p_log_id: logId,
+      p_embedding: embedding,
+      p_employee_id: session.employeeId,
+      p_chunks: chunks,
+    });
+
+    if (error) {
+      if (error.message?.includes("LOG_NOT_FOUND")) {
+        return NextResponse.json({ error: "되돌릴 버전을 찾을 수 없습니다." }, { status: 404 });
+      }
+      if (error.message?.includes("DOCUMENT_NOT_FOUND")) {
+        return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
+      }
+      if (error.message?.includes("NO_CHANGES")) {
+        return NextResponse.json({ error: "이미 같은 내용입니다." }, { status: 400 });
+      }
+      return NextResponse.json({ error: "되돌리기에 실패했습니다." }, { status: 500 });
+    }
+
+    if (!data?.[0]) {
+      return NextResponse.json({ error: "되돌리기에 실패했습니다." }, { status: 500 });
+    }
+
+    return NextResponse.json({ document: data[0] });
+  });
 }

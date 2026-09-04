@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { buildDocumentPayload } from "@/lib/document-write";
 import { isUuid } from "@/lib/uuid";
@@ -11,49 +11,46 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  }
-
-  const { id } = await params;
-  if (!isUuid(id)) {
-    return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
-  }
-
-  const body = await request.json().catch(() => null);
-  const title = typeof body?.title === "string" ? body.title.trim() : "";
-  const content = typeof body?.content === "string" ? body.content.trim() : "";
-
-  if (!title || !content) {
-    return NextResponse.json({ error: "제목과 본문을 입력해주세요." }, { status: 400 });
-  }
-
-  const { embedding, chunks } = await buildDocumentPayload(title, content);
-  const supabase = getServerSupabaseClient();
-
-  const { data, error } = await supabase.rpc("update_document", {
-    p_id: id,
-    p_title: title,
-    p_content: content,
-    p_embedding: embedding,
-    p_employee_id: session.employeeId,
-    p_chunks: chunks,
-  });
-
-  if (error) {
-    if (error.message?.includes("DOCUMENT_NOT_FOUND")) {
+  return withSession(async (session) => {
+    const { id } = await params;
+    if (!isUuid(id)) {
       return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
     }
-    if (error.message?.includes("NO_CHANGES")) {
-      return NextResponse.json({ error: "변경된 내용이 없습니다." }, { status: 400 });
+
+    const body = await request.json().catch(() => null);
+    const title = typeof body?.title === "string" ? body.title.trim() : "";
+    const content = typeof body?.content === "string" ? body.content.trim() : "";
+
+    if (!title || !content) {
+      return NextResponse.json({ error: "제목과 본문을 입력해주세요." }, { status: 400 });
     }
-    return NextResponse.json({ error: "문서 수정에 실패했습니다." }, { status: 500 });
-  }
 
-  if (!data?.[0]) {
-    return NextResponse.json({ error: "문서 수정에 실패했습니다." }, { status: 500 });
-  }
+    const { embedding, chunks } = await buildDocumentPayload(title, content);
+    const supabase = getServerSupabaseClient();
 
-  return NextResponse.json({ document: data[0] });
+    const { data, error } = await supabase.rpc("update_document", {
+      p_id: id,
+      p_title: title,
+      p_content: content,
+      p_embedding: embedding,
+      p_employee_id: session.employeeId,
+      p_chunks: chunks,
+    });
+
+    if (error) {
+      if (error.message?.includes("DOCUMENT_NOT_FOUND")) {
+        return NextResponse.json({ error: "문서를 찾을 수 없습니다." }, { status: 404 });
+      }
+      if (error.message?.includes("NO_CHANGES")) {
+        return NextResponse.json({ error: "변경된 내용이 없습니다." }, { status: 400 });
+      }
+      return NextResponse.json({ error: "문서 수정에 실패했습니다." }, { status: 500 });
+    }
+
+    if (!data?.[0]) {
+      return NextResponse.json({ error: "문서 수정에 실패했습니다." }, { status: 500 });
+    }
+
+    return NextResponse.json({ document: data[0] });
+  });
 }

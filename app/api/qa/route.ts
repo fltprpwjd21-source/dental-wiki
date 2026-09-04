@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { createEmbedding } from "@/lib/embeddings";
 
@@ -15,6 +15,7 @@ const MATCH_THRESHOLD = 0.2;
 const MATCH_COUNT = 5;
 const NO_MATCH_ANSWER = "위키에 등록된 정보가 없습니다.";
 const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
+const AI_UNAVAILABLE_MESSAGE = "질문 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
 
 type MatchedDocument = {
   id: string;
@@ -25,49 +26,61 @@ type MatchedDocument = {
 };
 
 export async function POST(request: NextRequest) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  }
+  return withSession(async () => {
+    const body = await request.json().catch(() => null);
+    const question = typeof body?.question === "string" ? body.question.trim() : "";
+    if (!question) {
+      return NextResponse.json({ error: "질문을 입력해주세요." }, { status: 400 });
+    }
 
-  const body = await request.json().catch(() => null);
-  const question = typeof body?.question === "string" ? body.question.trim() : "";
-  if (!question) {
-    return NextResponse.json({ error: "질문을 입력해주세요." }, { status: 400 });
-  }
+    // 질문 임베딩·답변 생성은 둘 다 OpenAI 호출이다. 여기를 감싸지 않으면 OpenAI
+    // 장애·요금 한도 초과 시 처리되지 않은 예외가 그대로 500으로 나가고, 클라이언트는
+    // 어떤 오류인지 알 수 없는 빈 응답을 받는다. 하나의 문구로 묶어 안내한다.
+    let queryEmbedding: number[];
+    try {
+      queryEmbedding = await createEmbedding(question);
+    } catch (error) {
+      console.error("[qa] 질문 임베딩 생성 실패:", error);
+      return NextResponse.json({ error: AI_UNAVAILABLE_MESSAGE }, { status: 503 });
+    }
 
-  const queryEmbedding = await createEmbedding(question);
+    const supabase = getServerSupabaseClient();
+    // 의미(임베딩)와 키워드를 함께 쓴다. 임베딩만으로는 "사랑니"·"실란트" 같은
+    // 한국어 고유명사를 놓쳐 엉뚱한 문서가 1위로 올라온다 (20260904000701 마이그레이션 참고)
+    const { data: matches, error } = await supabase.rpc("match_documents", {
+      query_embedding: queryEmbedding,
+      query_text: question,
+      match_threshold: MATCH_THRESHOLD,
+      match_count: MATCH_COUNT,
+    });
 
-  const supabase = getServerSupabaseClient();
-  // 의미(임베딩)와 키워드를 함께 쓴다. 임베딩만으로는 "사랑니"·"실란트" 같은
-  // 한국어 고유명사를 놓쳐 엉뚱한 문서가 1위로 올라온다 (20260904000701 마이그레이션 참고)
-  const { data: matches, error } = await supabase.rpc("match_documents", {
-    query_embedding: queryEmbedding,
-    query_text: question,
-    match_threshold: MATCH_THRESHOLD,
-    match_count: MATCH_COUNT,
-  });
+    if (error) {
+      return NextResponse.json({ error: "검색 중 오류가 발생했습니다." }, { status: 500 });
+    }
 
-  if (error) {
-    return NextResponse.json({ error: "검색 중 오류가 발생했습니다." }, { status: 500 });
-  }
+    const matchedDocuments = (matches ?? []) as MatchedDocument[];
 
-  const matchedDocuments = (matches ?? []) as MatchedDocument[];
+    // PRD 5번①: 근거 문서가 없으면 추측하지 않고 정해진 문장만 답한다
+    if (matchedDocuments.length === 0) {
+      return NextResponse.json({ answer: NO_MATCH_ANSWER, sources: [] });
+    }
 
-  // PRD 5번①: 근거 문서가 없으면 추측하지 않고 정해진 문장만 답한다
-  if (matchedDocuments.length === 0) {
-    return NextResponse.json({ answer: NO_MATCH_ANSWER, sources: [] });
-  }
+    let answer: string;
+    try {
+      answer = await createAnswer(question, matchedDocuments);
+    } catch (error) {
+      console.error("[qa] 답변 생성 실패:", error);
+      return NextResponse.json({ error: AI_UNAVAILABLE_MESSAGE }, { status: 503 });
+    }
 
-  const answer = await createAnswer(question, matchedDocuments);
-
-  return NextResponse.json({
-    answer,
-    sources: matchedDocuments.map((doc) => ({
-      id: doc.id,
-      title: doc.title,
-      category: doc.category,
-    })),
+    return NextResponse.json({
+      answer,
+      sources: matchedDocuments.map((doc) => ({
+        id: doc.id,
+        title: doc.title,
+        category: doc.category,
+      })),
+    });
   });
 }
 
