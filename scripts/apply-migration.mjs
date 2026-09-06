@@ -18,7 +18,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, "..", "supabase", "migrations");
-const PROJECT_REF = "oskwrxmsxhrdrgyxpeud";
+// 기본값은 현재 운영 프로젝트. 다른 프로젝트(예: 리전 이전용 새 프로젝트)에 적용할 때는
+// SUPABASE_PROJECT_REF 환경변수로 덮어쓴다.
+const PROJECT_REF = process.env.SUPABASE_PROJECT_REF ?? "oskwrxmsxhrdrgyxpeud";
 
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 if (!token) {
@@ -45,6 +47,17 @@ async function runSql(query) {
 }
 
 async function appliedVersions() {
+  // 새로 만든 프로젝트에는 이 장부가 없다 — Supabase CLI 가 첫 push 때 만들어 주는데,
+  // 우리는 CLI 대신 Management API 로 적용하므로 여기서 직접 만든다.
+  // (컬럼 구성은 CLI 가 만드는 것과 같게 맞춰야 나중에 CLI 로 돌아가도 호환된다)
+  await runSql(`
+    create schema if not exists supabase_migrations;
+    create table if not exists supabase_migrations.schema_migrations (
+      version text primary key,
+      statements text[],
+      name text
+    );
+  `);
   const rows = await runSql(
     "select version from supabase_migrations.schema_migrations order by version",
   );
