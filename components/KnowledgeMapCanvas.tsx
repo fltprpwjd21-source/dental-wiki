@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { KnowledgeMap, MapNode } from "@/lib/knowledge-map";
 import type { DocumentCategory } from "@/lib/categories";
 
@@ -50,7 +50,27 @@ export default function KnowledgeMapCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stateRef = useRef<{ nodes: Placed[]; w: number; h: number }>({ nodes: [], w: 0, h: 0 });
-  const [hoverId, setHoverId] = useState<string | null>(null);
+
+  // 강조 대상(호버·선택)은 state 가 아니라 ref 로 들고 있다.
+  //
+  // 전에는 hoverId 를 state 로 두고 아래 useEffect 의존성에 넣었는데, 그러면 점 위에
+  // 마우스를 올릴 때마다 이펙트가 통째로 다시 돌았다. 이펙트 본문은 layout() 으로
+  // 시작하므로 노드가 원형 초기 위치로 되돌아가 240스텝을 다시 밟고, 애니메이션도
+  // 0프레임부터 다시 시작한다 — 즉 **호버할 때마다 지도가 제자리로 튀었다.**
+  // 계산량도 만만치 않다(노드쌍 O(n²) × 330스텝을 마우스 움직임마다).
+  //
+  // 강조는 배치를 바꾸지 않고 "다시 그리기"만 하면 되는 일이라, 값은 ref 에 넣고
+  // redrawRef 로 그리기만 다시 부른다. 그래서 지도는 자리를 지킨 채 색만 바뀐다.
+  const hoverIdRef = useRef<string | null>(null);
+  const selectedIdRef = useRef<string | null>(selectedId);
+  const redrawRef = useRef<(() => void) | null>(null);
+
+  // 선택은 부모가 들고 있으므로(상세 패널에서 쓴다) props 로 내려온다.
+  // 바뀌면 배치는 그대로 두고 다시 그리기만 한다.
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+    redrawRef.current?.();
+  }, [selectedId]);
 
   // 배치 계산과 그리기는 렌더 사이클 밖에서 돈다 — 매 프레임 setState 하면
   // 리액트가 초당 60번 리렌더하게 되어 프로젝트가 이미 겪은 cascading render 문제가 된다.
@@ -91,7 +111,9 @@ export default function KnowledgeMapCanvas({
       draw();
     };
 
-    const activeEdges = () => map.edges.filter((e) => e.similarity >= minSimilarity);
+    // 한 번만 걸러 둔다 — 전에는 함수라 매 프레임·매 그리기마다 전체 배열을 다시 훑었다.
+    // (map 과 minSimilarity 는 이 이펙트의 의존성이므로 바뀌면 어차피 다시 계산된다)
+    const activeEdgeList = map.edges.filter((e) => e.similarity >= minSimilarity);
 
     const step = () => {
       const { nodes, w, h } = stateRef.current;
@@ -129,7 +151,7 @@ export default function KnowledgeMapCanvas({
           b.vy -= (dy / d) * rep;
         }
       }
-      for (const e of activeEdges()) {
+      for (const e of activeEdgeList) {
         const a = byId.get(e.a);
         const b = byId.get(e.b);
         if (!a || !b) continue;
@@ -174,16 +196,17 @@ export default function KnowledgeMapCanvas({
       const byId = new Map(nodes.map((n) => [n.id, n]));
       ctx.clearRect(0, 0, w, h);
 
-      const focus = selectedId ?? hoverId;
+      // ref 에서 읽는다 — 강조 대상이 바뀌어도 이 이펙트를 다시 돌리지 않기 위해서다.
+      const focus = selectedIdRef.current ?? hoverIdRef.current;
       const near = new Set<string>();
       if (focus) {
-        for (const e of activeEdges()) {
+        for (const e of activeEdgeList) {
           if (e.a === focus) near.add(e.b);
           if (e.b === focus) near.add(e.a);
         }
       }
 
-      for (const e of activeEdges()) {
+      for (const e of activeEdgeList) {
         const a = byId.get(e.a);
         const b = byId.get(e.b);
         if (!a || !b) continue;
@@ -248,6 +271,9 @@ export default function KnowledgeMapCanvas({
       if (frame < 90) raf = requestAnimationFrame(animate);
     };
 
+    // 강조만 바뀌었을 때 배치를 건드리지 않고 다시 그리기 위한 통로.
+    redrawRef.current = draw;
+
     layout();
     if (!reduced) {
       frame = 0;
@@ -259,8 +285,9 @@ export default function KnowledgeMapCanvas({
     return () => {
       window.removeEventListener("resize", onResize);
       if (raf) cancelAnimationFrame(raf);
+      redrawRef.current = null;
     };
-  }, [map, mode, minSimilarity, hoverId, selectedId]);
+  }, [map, mode, minSimilarity]);
 
   function pick(event: React.MouseEvent<HTMLCanvasElement>): MapNode | null {
     const canvas = canvasRef.current;
@@ -297,11 +324,24 @@ export default function KnowledgeMapCanvas({
           ? (event) => {
               const hit = pick(event);
               event.currentTarget.style.cursor = hit ? "pointer" : "default";
-              setHoverId(hit?.id ?? null);
+              const next = hit?.id ?? null;
+              // 같은 점 위에서 움직이는 동안은 아무 일도 하지 않는다 —
+              // 마우스 이동마다 다시 그리면 초당 수십 번 캔버스를 지우게 된다.
+              if (next === hoverIdRef.current) return;
+              hoverIdRef.current = next;
+              redrawRef.current?.();
             }
           : undefined
       }
-      onMouseLeave={mode === "explorer" ? () => setHoverId(null) : undefined}
+      onMouseLeave={
+        mode === "explorer"
+          ? () => {
+              if (hoverIdRef.current === null) return;
+              hoverIdRef.current = null;
+              redrawRef.current?.();
+            }
+          : undefined
+      }
       onClick={mode === "explorer" ? (event) => onSelect?.(pick(event)) : undefined}
     />
   );
