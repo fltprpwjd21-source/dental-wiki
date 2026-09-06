@@ -44,3 +44,6 @@ next-env.d.ts
 
 # bkit plugin 로컬 세션 캐시 (커밋 불필요)
 /.bkit/
+
+# 작업 중 지운 파일을 임시로 모아두는 곳 (CLAUDE.md 규칙 — 바로 삭제하지 않는다)
+trash-can/

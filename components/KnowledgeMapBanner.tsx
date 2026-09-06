@@ -2,15 +2,23 @@
 
 import Link from "next/link";
 import KnowledgeMapCanvas from "@/components/KnowledgeMapCanvas";
+import { CATEGORY_LABELS } from "@/lib/categories";
+import type { DocumentCategory } from "@/lib/categories";
 import type { KnowledgeMap } from "@/lib/knowledge-map";
 
-// 메인 화면 상단 배너. 위키에 쌓인 문서들이 서로 어떻게 얽혀 있는지를
-// 배경 그래픽으로 깔고, 그 위에 안내 문구를 얹는다.
+const CATEGORY_COLOR: Record<DocumentCategory, string> = {
+  handover: "#c2701c",
+  insurance: "#0f9b7a",
+  policy: "#6d55d0",
+};
+
+// 메인 화면 상단 배너.
 //
-// 보기 전용이다 — 클릭·호버·조작이 없다. 실제로 들여다보고 조작하는 화면은
-// 설정 탭 안 관리자 전용(/settings/map)에 따로 있다.
+// 처음에는 글자 뒤에 아주 옅게 까는 배경 장식으로 만들었는데, 그러면 정작 지도가
+// 안 보이고 "자세히 보기"를 눌러 들어가야만 볼 수 있었다. 지도를 배너의 배경이
+// 아니라 본체로 올려, 메인 화면에서 바로 읽히게 한다.
 //
-// 장식이지만 가짜 데이터는 쓰지 않는다. 실제 문서와 실제 계산된 관계를 그린다.
+// 보기 전용이다. 문턱값 조절·고립 문서 점검 같은 조작은 관리자 전용(/settings/map)에 있다.
 export default function KnowledgeMapBanner({
   map,
   isAdmin,
@@ -20,34 +28,51 @@ export default function KnowledgeMapBanner({
 }) {
   if (map.nodes.length === 0) return null;
 
-  return (
-    <section className="relative -mx-4 mb-2 overflow-hidden border-b border-gray-100 bg-surface/60 px-4 py-7 sm:rounded-lg sm:border sm:px-6">
-      {/* 배경 그래픽. 텍스트 뒤에 깔리므로 스크린리더에서는 감춘다(aria-hidden). */}
-      <div className="pointer-events-none absolute inset-0 opacity-70">
-        <KnowledgeMapCanvas map={map} mode="ambient" className="h-full w-full" />
-      </div>
-      {/* 글자가 선 위에 겹쳐도 읽히도록 왼쪽에서 오른쪽으로 옅어지는 막을 덧댄다 */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white via-white/85 to-white/30" />
+  // 서버는 문서마다 상위 6개까지 내려주는데, 좁은 배너에 그대로 그리면 선이 빽빽해
+  // 형태가 안 보인다. 배너에서는 강한 연결만 남긴다(조작·분석 화면에서는 전부 본다).
+  const BANNER_MIN_SIMILARITY = 0.72;
+  const shownEdges = map.edges.filter((e) => e.similarity >= BANNER_MIN_SIMILARITY);
+  const usedCategories = Array.from(new Set(map.nodes.map((n) => n.category)));
 
-      <div className="relative max-w-md">
-        <p className="text-[11px] font-medium uppercase tracking-widest text-brand-muted">
-          지식 지도
+  return (
+    <section className="-mx-4 mb-1 border-b border-gray-100 bg-surface/50 px-4 py-4 sm:mx-0 sm:rounded-lg sm:border sm:px-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="text-sm font-semibold text-brand">지식 지도</h2>
+        <p className="text-xs text-gray-500">
+          문서 <b className="font-medium text-ink">{map.nodes.length}</b>건 · 가까운 연결{" "}
+          <b className="font-medium text-ink">{shownEdges.length}</b>개
+          {isAdmin && (
+            <>
+              {" · "}
+              <Link href="/settings/map" className="text-accent underline underline-offset-2">
+                조작·분석
+              </Link>
+            </>
+          )}
         </p>
-        <h2 className="mt-1.5 text-base font-semibold text-ink">
-          위키 문서 {map.nodes.length}건이 서로 이어져 있습니다
-        </h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-gray-500">
-          질문에 답할 때 쓰는 것과 같은 의미 정보로, 문서끼리 얼마나 가까운지를 계산해 그렸습니다.
-          가까운 문서일수록 짧은 선으로 묶입니다.
-        </p>
-        {isAdmin && (
-          <Link
-            href="/settings/map"
-            className="mt-3 inline-block text-sm text-accent underline underline-offset-2 hover:text-brand"
-          >
-            지도 자세히 보기
-          </Link>
-        )}
+      </div>
+
+      {/* 지도 본체. 배경이 아니라 읽으라고 놓는 것이므로 충분한 높이를 준다. */}
+      <div className="mt-2.5 h-52 w-full sm:h-60">
+        <KnowledgeMapCanvas
+          map={map}
+          mode="ambient"
+          minSimilarity={BANNER_MIN_SIMILARITY}
+          className="h-full w-full"
+        />
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+        {usedCategories.map((category) => (
+          <span key={category} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+            <span
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: CATEGORY_COLOR[category] }}
+            />
+            {CATEGORY_LABELS[category]}
+          </span>
+        ))}
+        <span className="text-gray-400">가까운 내용일수록 짧은 선</span>
       </div>
     </section>
   );

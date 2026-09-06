@@ -6,7 +6,8 @@ import type { DocumentCategory } from "@/lib/categories";
 
 // 문서 간 의미 관계를 힘-기반 배치로 그린다. 두 가지 모드를 한 컴포넌트가 맡는다.
 //
-//   ambient  — 메인 화면 배너. 보기 전용이고 아주 옅게 깔린다. 클릭·호버 없음.
+//   ambient  — 메인 화면 배너. 보기 전용(클릭·호버 없음)이지만 배경 장식이 아니라
+//              읽으라고 놓는 것이므로 선과 점을 또렷하게 그린다. 큰 문서에는 이름도 붙인다.
 //   explorer — 설정 탭 안 관리자 화면. 호버·클릭·문턱값 조절이 붙는다.
 //
 // 캔버스로 그리는 이유: 노드마다 DOM 을 만들면 문서가 몇백 건이 됐을 때 그대로 무너진다.
@@ -81,7 +82,7 @@ export default function KnowledgeMapCanvas({
           y: h / 2 + Math.sin(angle) * radius,
           vx: 0,
           vy: 0,
-          r: (mode === "ambient" ? 3 : 6) + Math.sqrt(node.weight) * (mode === "ambient" ? 1.1 : 2.2),
+          r: (mode === "ambient" ? 4.5 : 6) + Math.sqrt(node.weight) * (mode === "ambient" ? 1.7 : 2.2),
         };
       });
       stateRef.current = { nodes, w, h };
@@ -98,9 +99,15 @@ export default function KnowledgeMapCanvas({
       const cx = w / 2;
       const cy = h / 2;
 
+      // 배너는 높이가 200px 남짓이라 힘 균형이 관리자 화면과 달라야 한다.
+      // 반발력이 중심 인력을 압도하면 점들이 전부 가장자리로 밀려 직사각형이 된다
+      // (실제로 처음 그렇게 나왔다). 배너에서는 중심으로 더 세게 모으고 덜 밀어낸다.
+      const pull = mode === "ambient" ? 0.008 : 0.0015;
+      const push = mode === "ambient" ? 900 : 5200;
+
       for (const n of nodes) {
-        n.vx += (cx - n.x) * 0.0015;
-        n.vy += (cy - n.y) * 0.0015;
+        n.vx += (cx - n.x) * pull;
+        n.vy += (cy - n.y) * pull;
       }
       for (let i = 0; i < nodes.length; i += 1) {
         for (let j = i + 1; j < nodes.length; j += 1) {
@@ -115,7 +122,7 @@ export default function KnowledgeMapCanvas({
             dy = 0.5;
           }
           const d = Math.sqrt(d2);
-          const rep = (mode === "ambient" ? 3200 : 5200) / d2;
+          const rep = push / d2;
           a.vx += (dx / d) * rep;
           a.vy += (dy / d) * rep;
           b.vx -= (dx / d) * rep;
@@ -129,8 +136,12 @@ export default function KnowledgeMapCanvas({
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const d = Math.hypot(dx, dy) || 1;
-        // 가까운 문서일수록 짧은 스프링 — 유사도가 거리로 보이게 한다
-        const rest = 260 - (e.similarity - 0.3) * 220;
+        // 가까운 문서일수록 짧은 스프링 — 유사도가 거리로 보이게 한다.
+        // 배너는 상자가 작아 같은 길이를 쓰면 전부 벽에 붙으므로 절반 정도로 줄인다.
+        const rest =
+          mode === "ambient"
+            ? 60 + (0.85 - e.similarity) * 90
+            : 260 - (e.similarity - 0.3) * 220;
         const k = 0.012 + (e.similarity - 0.3) * 0.03;
         const f = (d - rest) * k;
         a.vx += (dx / d) * f;
@@ -138,7 +149,8 @@ export default function KnowledgeMapCanvas({
         b.vx -= (dx / d) * f;
         b.vy -= (dy / d) * f;
       }
-      const pad = mode === "ambient" ? 6 : 34;
+      // 점 아래에 이름을 쓰므로 그만큼 가장자리를 비워둔다(글자가 잘리지 않게).
+      const pad = mode === "ambient" ? 20 : 34;
       for (const n of nodes) {
         n.vx *= 0.84;
         n.vy *= 0.84;
@@ -148,6 +160,14 @@ export default function KnowledgeMapCanvas({
     };
 
     const edgeRgb = brandRgb();
+
+    // 배너에서 이름을 붙일 문서: 조각이 가장 많은(=내용이 두꺼운) 3건.
+    // 화면 크기와 무관하게 개수를 고정해야 라벨이 서로 겹치지 않는다.
+    const labelIds = new Set(
+      mode === "ambient"
+        ? [...map.nodes].sort((a, b) => b.weight - a.weight).slice(0, 3).map((n) => n.id)
+        : [],
+    );
 
     const draw = () => {
       const { nodes, w, h } = stateRef.current;
@@ -171,9 +191,9 @@ export default function KnowledgeMapCanvas({
         const lit = !focus || e.a === focus || e.b === focus;
         ctx.strokeStyle =
           mode === "ambient"
-            ? `rgba(${edgeRgb}, ${0.05 + strength * 0.1})`
+            ? `rgba(${edgeRgb}, ${0.1 + strength * 0.28})`
             : `rgba(${edgeRgb}, ${lit ? 0.12 + strength * 0.35 : 0.05})`;
-        ctx.lineWidth = mode === "ambient" ? 0.6 + strength : 0.7 + strength * 2;
+        ctx.lineWidth = mode === "ambient" ? 0.7 + strength * 1.6 : 0.7 + strength * 2;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -182,7 +202,7 @@ export default function KnowledgeMapCanvas({
 
       for (const n of nodes) {
         const dimmed = focus !== null && n.id !== focus && !near.has(n.id);
-        ctx.globalAlpha = mode === "ambient" ? 0.5 : dimmed ? 0.28 : 1;
+        ctx.globalAlpha = mode === "ambient" ? 0.92 : dimmed ? 0.28 : 1;
         if (n.id === focus) {
           ctx.beginPath();
           ctx.arc(n.x, n.y, n.r + 7, 0, Math.PI * 2);
@@ -194,12 +214,26 @@ export default function KnowledgeMapCanvas({
         ctx.fillStyle = CATEGORY_COLOR[n.category];
         ctx.fill();
 
-        if (mode === "explorer" && !dimmed) {
-          const label = n.title.length > 15 ? `${n.title.slice(0, 14)}…` : n.title;
-          ctx.font = `${n.id === focus ? 500 : 400} 11px system-ui, -apple-system, sans-serif`;
+        // 관리자 화면은 전부, 배너는 가장 굵은 몇 개만 이름을 붙인다 —
+        // 좁은 배너에 11개를 다 쓰면 글자가 서로 겹쳐 오히려 못 읽는다(실제로 그랬다).
+        const labelled = mode === "explorer" ? !dimmed : labelIds.has(n.id);
+        if (labelled) {
+          const limit = mode === "ambient" ? 9 : 15;
+          const label = n.title.length > limit ? `${n.title.slice(0, limit - 1)}…` : n.title;
+          const size = mode === "ambient" ? 10 : 11;
+          ctx.font = `${n.id === focus ? 500 : 400} ${size}px system-ui, -apple-system, sans-serif`;
           ctx.textAlign = "center";
-          ctx.fillStyle = n.id === focus ? "#0f1a26" : "#6b7c8d";
-          ctx.fillText(label, n.x, n.y + n.r + 13);
+          // 가장자리 점의 이름이 캔버스 밖으로 잘리지 않게 안쪽으로 당긴다
+          const half = ctx.measureText(label).width / 2;
+          const tx = Math.max(half + 2, Math.min(w - half - 2, n.x));
+          const ty = n.y + n.r + (mode === "ambient" ? 11 : 13);
+          // 글자 뒤에 흰 테두리를 먼저 그린다 — 선이나 다른 점 위에 겹쳐도 읽히게.
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineJoin = "round";
+          ctx.strokeText(label, tx, ty);
+          ctx.fillStyle = n.id === focus ? "#0f1a26" : "#5b6b7c";
+          ctx.fillText(label, tx, ty);
         }
         ctx.globalAlpha = 1;
       }
@@ -252,12 +286,11 @@ export default function KnowledgeMapCanvas({
     <canvas
       ref={canvasRef}
       className={className}
-      aria-hidden={mode === "ambient"}
-      role={mode === "explorer" ? "img" : undefined}
+      role="img"
       aria-label={
         mode === "explorer"
           ? `문서 ${map.nodes.length}건의 의미 관계 지도. 아래 목록에서 같은 내용을 표로 볼 수 있습니다.`
-          : undefined
+          : `문서 ${map.nodes.length}건이 내용의 가까운 정도에 따라 ${map.edges.length}개의 선으로 이어진 지도입니다.`
       }
       onMouseMove={
         mode === "explorer"
