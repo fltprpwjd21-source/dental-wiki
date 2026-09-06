@@ -196,6 +196,8 @@ export default function NoteEditor({
         return;
       }
 
+      // 크기·형식·저장 경로는 보내지 않는다 — 서버가 스토리지에서 직접 읽는다.
+      // 여기서 보내봐야 "브라우저가 스스로 신고한 값"이라 제한의 근거가 못 된다.
       const confirmRes = await fetch("/api/notes/attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -203,9 +205,6 @@ export default function NoteEditor({
           noteId: note.id,
           attachmentId: urlData.attachmentId,
           name: file.name,
-          storagePath: urlData.storagePath,
-          sizeBytes: file.size,
-          mimeType: file.type || "application/octet-stream",
         }),
       });
       const confirmData = await confirmRes.json();

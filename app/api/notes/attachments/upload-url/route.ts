@@ -27,6 +27,11 @@ export async function POST(request: NextRequest) {
         { status: 422 },
       );
     }
+    // 여기서 보는 sizeBytes 는 브라우저가 신고한 값이라 제한의 근거가 못 된다
+    // (콘솔에서 1 을 보내면 그대로 통과한다). 50MB 업로드를 시작하기 전에 미리
+    // 안내하려는 편의 검사일 뿐이고, 실제 강제는 아래 두 곳이 한다.
+    //   - 버킷의 file_size_limit (업로드 자체를 물리적으로 거부)
+    //   - 확정 등록(POST /api/notes/attachments)이 스토리지에서 읽은 실제 크기
     if (isOversized(sizeBytes)) {
       return NextResponse.json(
         { error: `파일 용량이 너무 큽니다. (최대 ${FILE_MAX_SIZE_MB}MB)` },
