@@ -25,13 +25,12 @@ export default async function SettingsPage() {
       <h1 className="mb-6 text-lg font-semibold text-brand">설정</h1>
 
       {/*
-        PRD 6장(범위): 지도의 "조작·분석은 설정 탭 안 관리자 전용 화면에서".
-        그런데 /settings/map 으로 들어가는 길이 메인 화면 배너에만 있어서, 설정 탭에서
-        시작하면 그 화면의 존재를 알 수 없었다. /settings/map 은 "← 설정" 으로 여기
-        돌아오는데 여기서는 다시 갈 수 없는, 한쪽만 뚫린 통로였다.
+        지도는 2026-09-07 에 설정 밖(/map)으로 나가 전 스탭에게 열렸다.
+        설정에서도 바로 갈 수 있게 링크는 남겨둔다 — 관리자가 화이트리스트를 보다가
+        "고립된 문서 없나" 를 확인하러 넘어가는 흐름이 자연스럽기 때문이다.
       */}
       <Link
-        href="/settings/map"
+        href="/map"
         className="mb-8 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-4 hover:bg-surface"
       >
         <span className="min-w-0">

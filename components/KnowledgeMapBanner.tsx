@@ -18,14 +18,9 @@ const CATEGORY_COLOR: Record<DocumentCategory, string> = {
 // 안 보이고 "자세히 보기"를 눌러 들어가야만 볼 수 있었다. 지도를 배너의 배경이
 // 아니라 본체로 올려, 메인 화면에서 바로 읽히게 한다.
 //
-// 보기 전용이다. 문턱값 조절·고립 문서 점검 같은 조작은 관리자 전용(/settings/map)에 있다.
-export default function KnowledgeMapBanner({
-  map,
-  isAdmin,
-}: {
-  map: KnowledgeMap;
-  isAdmin: boolean;
-}) {
+// 보기 전용이다. 돌려보기·문턱값 조절·고립 문서 점검은 /map 에 있다.
+// (2026-09-07: 그 화면이 관리자 전용에서 전 스탭 공개로 바뀌면서 이 링크의 조건도 없앴다)
+export default function KnowledgeMapBanner({ map }: { map: KnowledgeMap }) {
   if (map.nodes.length === 0) return null;
 
   // 서버는 문서마다 상위 6개까지 내려주는데, 좁은 배너에 그대로 그리면 선이 빽빽해
@@ -41,14 +36,10 @@ export default function KnowledgeMapBanner({
         <p className="text-xs text-gray-500">
           문서 <b className="font-medium text-ink">{map.nodes.length}</b>건 · 가까운 연결{" "}
           <b className="font-medium text-ink">{shownEdges.length}</b>개
-          {isAdmin && (
-            <>
-              {" · "}
-              <Link href="/settings/map" className="text-accent underline underline-offset-2">
-                조작·분석
-              </Link>
-            </>
-          )}
+          {" · "}
+          <Link href="/map" className="text-accent underline underline-offset-2">
+            크게 보기
+          </Link>
         </p>
       </div>
 

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import KnowledgeMapCanvas from "@/components/KnowledgeMapCanvas";
+import KnowledgeMap3D from "@/components/KnowledgeMap3D";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import type { KnowledgeMap, MapNode } from "@/lib/knowledge-map";
 
@@ -64,16 +64,18 @@ export default function KnowledgeMapExplorer({ map }: { map: KnowledgeMap }) {
         </p>
       </div>
 
-      <div className="h-[440px] rounded-lg border border-gray-200 bg-white">
-        <KnowledgeMapCanvas
+      <div className="h-[520px] overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <KnowledgeMap3D
           map={map}
-          mode="explorer"
           minSimilarity={minSimilarity}
           onSelect={setSelected}
           selectedId={selected?.id ?? null}
-          className="h-full w-full"
         />
       </div>
+      <p className="-mt-4 text-xs text-gray-500">
+        끌어서 돌리고, 휠로 확대·축소합니다. 점에 마우스를 올리면 문서 이름이, 클릭하면 아래에
+        가까운 문서 목록이 나옵니다.
+      </p>
 
       {selected ? (
         <div className="rounded-lg border border-gray-200 p-4">
@@ -82,21 +84,14 @@ export default function KnowledgeMapExplorer({ map }: { map: KnowledgeMap }) {
               <p className="text-xs text-gray-500">{CATEGORY_LABELS[selected.category]}</p>
               <h3 className="mt-0.5 truncate text-sm font-semibold text-ink">{selected.title}</h3>
             </div>
-            <div className="flex shrink-0 gap-2 text-xs">
-              <Link
-                href={`/documents/${selected.id}`}
-                className="rounded border border-brand px-2.5 py-1 text-brand hover:bg-surface"
-              >
-                문서 열기
-              </Link>
-              <button
-                type="button"
-                onClick={() => setSelected(null)}
-                className="rounded border border-gray-300 px-2.5 py-1 hover:bg-surface"
-              >
-                닫기
-              </button>
-            </div>
+            {/* "열기" 는 지도 위 막대에 있으므로 여기서는 닫기만 둔다(같은 버튼 두 개를 만들지 않는다) */}
+            <button
+              type="button"
+              onClick={() => setSelected(null)}
+              className="shrink-0 rounded border border-gray-300 px-2.5 py-1 text-xs hover:bg-surface"
+            >
+              닫기
+            </button>
           </div>
           <ul className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-sm">
             {neighborsOf(selected.id)
