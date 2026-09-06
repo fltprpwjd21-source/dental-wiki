@@ -58,7 +58,9 @@ export default function QaScreen() {
   }, [searchParams]);
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8">
+    /* 바깥 <main>·최대폭·좌우 여백은 app/page.tsx 가 맡는다 (지식 지도 배너와 같은
+       단을 쓰기 위해서다). 여기서는 세로 간격만 책임진다. */
+    <div className="flex flex-1 flex-col gap-6 pt-6">
       <div>
         <h1 className="mb-2 text-lg font-semibold text-brand">치과위키에 질문하기</h1>
         {/* DESIGN.md: "상단에 3개 카테고리 바로가기". 예전엔 본문 글자 사이에 밑줄 친
@@ -125,6 +127,6 @@ export default function QaScreen() {
           )}
         </div>
       )}
-    </main>
+    </div>
   );
 }
