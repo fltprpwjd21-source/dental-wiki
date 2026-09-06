@@ -41,7 +41,10 @@ export async function getKnowledgeMap(topK: number = DEFAULT_TOP_K): Promise<Kno
   const [docsResult, edgesResult, chunkResult] = await Promise.all([
     supabase.from("documents").select("id, title, category"),
     supabase.rpc("document_graph", { p_top_k: topK }),
-    supabase.from("document_chunks").select("document_id"),
+    // 조각은 개수만 필요하다. 전에는 document_chunks 전체 행을 받아 와서 세고 버렸는데
+    // (문서 1000건이면 7000행), 세는 일은 DB 가 하면 되고 그러면 오가는 것이
+    // 문서 수만큼으로 줄어든다.
+    supabase.rpc("document_chunk_counts"),
   ]);
 
   if (docsResult.error || edgesResult.error) {
@@ -50,10 +53,12 @@ export async function getKnowledgeMap(topK: number = DEFAULT_TOP_K): Promise<Kno
     return { nodes: [], edges: [] };
   }
 
-  const chunkCount = new Map<string, number>();
-  for (const row of chunkResult.data ?? []) {
-    chunkCount.set(row.document_id, (chunkCount.get(row.document_id) ?? 0) + 1);
-  }
+  const chunkCount = new Map<string, number>(
+    ((chunkResult.data ?? []) as Array<{ document_id: string; chunk_count: number }>).map((row) => [
+      row.document_id,
+      row.chunk_count,
+    ]),
+  );
 
   const nodes: MapNode[] = (docsResult.data ?? []).map((doc) => ({
     id: doc.id,
