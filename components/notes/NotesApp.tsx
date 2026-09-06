@@ -91,8 +91,16 @@ export default function NotesApp() {
     setMobileView("content");
   }
 
-  function handleRenamed(id: string, name: string) {
-    setFlatNodes((prev) => prev?.map((n) => (n.id === id ? { ...n, name } : n)) ?? null);
+  // version 을 반드시 함께 받아 캐시에 반영한다.
+  //
+  // 예전에는 (id, name) 두 개만 받았다. 호출부는 세 번째로 새 version 을 넘기고
+  // 있었지만 조용히 버려졌다 — 인자를 덜 받는 함수는 더 넘기는 자리에 넣어도
+  // TypeScript 가 합법으로 보기 때문에 컴파일도 통과했다.
+  // 그 결과 flatNodes 에는 옛 version 이 남고, FolderView 는 그 값으로 상태를
+  // 초기화하므로(useState(node.version)) 다른 노드를 골랐다가 돌아와 리마운트되면
+  // 낡은 version 으로 저장을 시도해 항상 409 "다른 사람이 방금 바꿨습니다" 가 떴다.
+  function handleRenamed(id: string, name: string, version: number) {
+    setFlatNodes((prev) => prev?.map((n) => (n.id === id ? { ...n, name, version } : n)) ?? null);
     setSelected((prev) => (prev && prev.id === id ? { ...prev, name } : prev));
   }
 
