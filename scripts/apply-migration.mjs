@@ -18,9 +18,22 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, "..", "supabase", "migrations");
-// 기본값은 현재 운영 프로젝트. 다른 프로젝트(예: 리전 이전용 새 프로젝트)에 적용할 때는
-// SUPABASE_PROJECT_REF 환경변수로 덮어쓴다.
-const PROJECT_REF = process.env.SUPABASE_PROJECT_REF ?? "oskwrxmsxhrdrgyxpeud";
+// 대상 프로젝트는 앱이 실제로 바라보는 곳(NEXT_PUBLIC_SUPABASE_URL)에서 뽑는다.
+// ref 를 코드에 박아두면 프로젝트를 옮겼을 때 여기만 옛 프로젝트를 가리킨 채 남아,
+// 마이그레이션이 조용히 엉뚱한(이미 버린) DB에 적용된다 — 2026-09-05 리전 이전
+// (시드니 → 서울) 직후 실제로 그 상태였다.
+// 다른 프로젝트에 적용해야 할 때만 SUPABASE_PROJECT_REF 로 명시적으로 덮어쓴다.
+const PROJECT_REF =
+  process.env.SUPABASE_PROJECT_REF ??
+  (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1];
+
+if (!PROJECT_REF) {
+  console.error(
+    "대상 프로젝트를 알 수 없습니다. NEXT_PUBLIC_SUPABASE_URL 이 https://<ref>.supabase.co 형식인지\n" +
+      "확인하거나, SUPABASE_PROJECT_REF 로 직접 지정해주세요.",
+  );
+  process.exit(1);
+}
 
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 if (!token) {
