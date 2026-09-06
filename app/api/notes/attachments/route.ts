@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { createDownloadUrl } from "@/lib/file-storage";
-import { isForbiddenExtension, isOversized, FILE_MAX_SIZE_MB } from "@/lib/file-rules";
+import { isAllowedExtension, isAllowedMimeType, isOversized, FILE_MAX_SIZE_MB } from "@/lib/file-rules";
 import { isUuid } from "@/lib/uuid";
 
 // 업로드 확정 (메타데이터 등록). noteId는 upload-url 때와 동일하게 body로 받는다.
@@ -19,8 +19,13 @@ export async function POST(request: NextRequest) {
     if (!isUuid(noteId) || !isUuid(attachmentId) || !name || !storagePath || sizeBytes === null) {
       return NextResponse.json({ error: "잘못된 요청입니다." }, { status: 400 });
     }
-    if (isForbiddenExtension(name)) {
-      return NextResponse.json({ error: "업로드할 수 없는 파일 형식입니다." }, { status: 422 });
+    // 업로드 URL 발급 때 이미 검사했지만, 그 뒤에 이름만 바꿔 확정 등록할 수 있으므로
+    // 같은 규칙을 여기서 한 번 더 강제한다 (심층 방어).
+    if (!isAllowedExtension(name) || !isAllowedMimeType(mimeType)) {
+      return NextResponse.json(
+        { error: "사진(png·jpg·gif·webp)과 PDF만 올릴 수 있습니다." },
+        { status: 422 },
+      );
     }
     if (isOversized(sizeBytes)) {
       return NextResponse.json(

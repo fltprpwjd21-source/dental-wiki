@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import MarkdownView from "@/components/notes/MarkdownView";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
+import { ACCEPT_ATTRIBUTE } from "@/lib/file-rules";
 import type { FlatNode } from "@/lib/notes/tree";
 
 type NoteDetail = {
@@ -280,7 +281,7 @@ export default function NoteEditor({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,application/pdf"
+                accept={ACCEPT_ATTRIBUTE}
                 className="hidden"
                 onChange={handleFileSelected}
               />

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { buildStoragePath, createUploadUrl } from "@/lib/file-storage";
-import { isForbiddenExtension, isOversized, FILE_MAX_SIZE_MB } from "@/lib/file-rules";
+import { isAllowedExtension, isOversized, FILE_MAX_SIZE_MB } from "@/lib/file-rules";
 import { isUuid } from "@/lib/uuid";
 
 // 사진·PDF는 노트에 속한 첨부파일이다 — noteId는 반드시 type='note'인 노드여야 한다
@@ -21,8 +21,11 @@ export async function POST(request: NextRequest) {
     if (!fileName || sizeBytes === null) {
       return NextResponse.json({ error: "잘못된 요청입니다." }, { status: 400 });
     }
-    if (isForbiddenExtension(fileName)) {
-      return NextResponse.json({ error: "업로드할 수 없는 파일 형식입니다." }, { status: 422 });
+    if (!isAllowedExtension(fileName)) {
+      return NextResponse.json(
+        { error: "사진(png·jpg·gif·webp)과 PDF만 올릴 수 있습니다." },
+        { status: 422 },
+      );
     }
     if (isOversized(sizeBytes)) {
       return NextResponse.json(
