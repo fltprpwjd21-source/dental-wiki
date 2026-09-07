@@ -174,7 +174,20 @@ export default function KnowledgeMap3D({
       const closeness = Math.max(0, Math.min(1, (edge.similarity - 0.3) / 0.55));
       return LINK_DISTANCE_BASE + (1 - closeness) * LINK_DISTANCE_SPREAD;
     });
-    fg.d3ReheatSimulation();
+    // d3ReheatSimulation() 은 부르지 않는다.
+    //
+    //   그 함수는 내부적으로 engineRunning = true 로 켠다. 그런데 배치 객체(state.layout)는
+    //   라이브러리가 graphData 를 반영한 **뒤에야** 만들어진다. 이 이펙트가 그보다 먼저
+    //   돌면 "엔진은 켜졌는데 배치는 아직 없는" 상태가 되고, 다음 애니메이션 프레임에서
+    //   state.layout[...] 을 건드리다 TypeError 로 죽는다.
+    //     undefined is not an object (evaluating 'state.layout[isD3Sim ? "tick" : "step"]')
+    //   순서에 따라 터지기도 하고 안 터지기도 하는 경쟁 상태라 재현이 들쭉날쭉했다.
+    //
+    //   다시 데우지 않아도 힘은 적용된다.
+    //     - 이 이펙트가 먼저 돌면: 힘이 d3ForceLayout 에 이미 걸려 있어 warmup 부터 쓰인다
+    //     - 데이터 반영이 먼저면: 엔진이 cooldownTicks 동안 계속 돌고 있어 남은 틱에 반영된다
+    //   (d3Force() 자체는 안전하다 — d3ForceLayout 은 데이터와 무관하게 초기화 때 만들어진다)
+
     // 힘이 바뀌면 그래프가 퍼지는 범위도 달라지므로 카메라를 다시 맞춰야 한다.
     fittedRef.current = false;
   }, [graphData, ForceGraph3D, size.width]);
