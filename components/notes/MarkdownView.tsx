@@ -20,8 +20,15 @@ function textOf(node: React.ReactNode): string {
 // 사진은 마크다운 이미지 문법(![](...))이라 기본 <img> 렌더링만으로 바로
 // 보이지만, PDF는 링크([📎 이름](...))라 그냥 두면 텍스트 한 줄로만 보였다.
 // "사진처럼 바로 보이면 좋겠다"는 요청에 따라, 첨부 링크 중 이름이 .pdf로
-// 끝나는 것만 골라 <iframe>으로 미리보기를 끼워 넣는다 — 이 링크는 우리가
-// 업로드 흐름에서 직접 만든 same-origin 인증 라우트라 iframe에 넣어도 안전하다.
+// 끝나는 것만 골라 <iframe>으로 미리보기를 끼워 넣는다.
+//
+// 이 iframe 이 안전한 근거 (2026-09-07 정정)
+//   예전 주석은 "same-origin 인증 라우트라 안전하다"고 적고 있었는데 **사실이 아니었다**.
+//   /api/notes/{id}/content 가 Supabase 서명 URL로 307 리다이렉트했기 때문에, iframe 안은
+//   실제로는 *.supabase.co 였다 (LESSONS §9-9).
+//   지금은 그 라우트가 바이트를 직접 흘려보내므로 진짜 same-origin 이고, 응답에
+//   `Content-Security-Policy: sandbox` 가 붙어 그 안에서는 스크립트가 아예 실행되지 않는다.
+//   즉 허용 목록(§9-2)이 뚫려 html·svg 가 들어오더라도 이 iframe 에서 코드가 돌지 않는다.
 function AttachmentLink({ href, children }: { href?: string; children?: React.ReactNode }) {
   const text = textOf(children);
   if (href && ATTACHMENT_LINK.test(href) && /\.pdf$/i.test(text)) {

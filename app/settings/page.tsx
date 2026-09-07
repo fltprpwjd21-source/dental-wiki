@@ -45,6 +45,22 @@ export default async function SettingsPage() {
         </span>
       </Link>
 
+      {/* 스탭 각자의 노트 화면에는 본인이 버린 것만 보인다. 전체 정리는 관리자 몫이다. */}
+      <Link
+        href="/settings/trash"
+        className="mb-8 flex items-center justify-between gap-4 rounded-lg border border-gray-200 p-4 hover:bg-surface"
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-ink">휴지통</span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-gray-500">
+            전 스탭이 버린 노트·폴더·첨부를 모두 보고, 골라서 완전히 지웁니다.
+          </span>
+        </span>
+        <span aria-hidden className="shrink-0 text-gray-400">
+          →
+        </span>
+      </Link>
+
       <h2 className="mb-4 text-base font-semibold text-brand">사원번호 화이트리스트</h2>
       <SettingsWhitelist
         initialWhitelist={whitelist ?? []}
