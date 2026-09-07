@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import MarkdownView from "@/components/notes/MarkdownView";
+import NoteLogSection from "@/components/notes/NoteLogSection";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
 import { ACCEPT_ATTRIBUTE } from "@/lib/file-rules";
 import type { FlatNode } from "@/lib/notes/tree";
@@ -412,6 +413,9 @@ export default function NoteEditor({
             </ul>
           </div>
         )}
+
+        {/* 문서 화면의 "수정 로그 보기"와 같은 자리. 누가 언제 무엇을 했는지 남긴다. */}
+        <NoteLogSection nodeId={note.id} version={note.version} />
       </div>
     </div>
   );

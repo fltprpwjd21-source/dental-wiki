@@ -26,8 +26,13 @@ export const ACCEPT_ATTRIBUTE = ALLOWED_MIME_TYPES.join(",");
 export const FILE_MAX_SIZE_MB = Number(process.env.FILE_MAX_SIZE_MB ?? "50");
 export const FILE_MAX_SIZE_BYTES = FILE_MAX_SIZE_MB * 1024 * 1024;
 
-// Plan FR-06: 휴지통 파일은 30일 후 자동 완전 삭제된다.
-export const TRASH_RETENTION_DAYS = 30;
+// 휴지통 항목은 이 기간이 지나면 크론이 자동으로 완전 삭제한다.
+//
+// 30일 → 7일 (2026-09-07). 30일은 "혹시 몰라 넉넉히" 잡은 값이었는데, 실제로는
+// 잘못 지운 것을 되돌리는 일이 하루 이틀 안에 일어난다. 그 사이 스토리지에는 지운
+// 파일이 계속 쌓여 있고, 관리자 화면에도 오래된 항목이 밀려 정작 최근 것을 못 본다.
+// 되돌릴 기회는 일주일이면 충분하고, 급하면 관리자가 휴지통 화면에서 직접 비운다.
+export const TRASH_RETENTION_DAYS = 7;
 
 function getExtension(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
