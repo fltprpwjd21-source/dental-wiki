@@ -44,10 +44,15 @@ const CATEGORY_COLOR: Record<DocumentCategory, string> = {
 // NODE_REL_SIZE 는 5 → 2.6 까지 줄였다가 4.2 로 되돌렸다. 2.6 에서는 구체가 너무 작아
 // 마우스를 올려도 레이캐스트에 걸리지 않아 이름표가 안 떴다 — 간격은 힘으로 벌리고
 // 점 크기는 "짚을 수 있는" 크기를 지키는 쪽이 맞다.
+//
+// 힘은 -320 / 60~300 까지 키웠다가 -150 / 45~185 로 낮췄다. 카메라를 그래프에 맞추면
+// (zoomToFit) 넓게 퍼질수록 카메라가 뒤로 물러나므로, 화면에 보이는 점은 오히려
+// 작아진다. "넓은 간격"과 "큰 점"은 화면 안에서 서로 경쟁하는 값이라 중간을 잡았다.
+// (그래도 기본값 charge -30 / 거리 30 보다는 5배·4배 넓다)
 const NODE_REL_SIZE = 4.2;
-const CHARGE_STRENGTH = -320;
-const LINK_DISTANCE_BASE = 60;
-const LINK_DISTANCE_SPREAD = 240;
+const CHARGE_STRENGTH = -150;
+const LINK_DISTANCE_BASE = 45;
+const LINK_DISTANCE_SPREAD = 140;
 
 type Graph3DNode = {
   id: string;
@@ -85,6 +90,9 @@ export default function KnowledgeMap3D({
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [ForceGraph3D, setForceGraph3D] = useState<ForceGraph3DType | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  // 카메라를 이미 맞췄는지. 배치가 멈출 때마다 맞추면 사용자가 돌려놓은 시점을
+  // 계속 빼앗으므로, 데이터·힘이 바뀐 뒤 처음 멈출 때 한 번만 맞춘다.
+  const fittedRef = useRef(false);
 
   // 브라우저에서만 불러온다 — 이 라이브러리는 모듈을 읽는 시점에 window/WebGL 을 건드려서
   // 서버에서 평가되면 "window is not defined" 로 죽는다.
@@ -154,6 +162,9 @@ export default function KnowledgeMap3D({
 
   // 점 크기 대비 간격을 벌린다. 기본값(charge -30, 거리 30)으로는 점들이 서로 붙어
   // 뭉쳐 보였다. graphData 가 바뀌면 라이브러리가 힘을 다시 만들므로 그때마다 다시 건다.
+  //
+  // size.width 도 의존성에 넣는다 — 폭이 0 인 동안에는 그래프를 렌더하지 않아서
+  // fgRef 가 비어 있고, 그때 이 이펙트가 돌면 힘이 **조용히 적용되지 않은 채** 넘어간다.
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;
@@ -164,13 +175,28 @@ export default function KnowledgeMap3D({
       return LINK_DISTANCE_BASE + (1 - closeness) * LINK_DISTANCE_SPREAD;
     });
     fg.d3ReheatSimulation();
-  }, [graphData, ForceGraph3D]);
+    // 힘이 바뀌면 그래프가 퍼지는 범위도 달라지므로 카메라를 다시 맞춰야 한다.
+    fittedRef.current = false;
+  }, [graphData, ForceGraph3D, size.width]);
 
   // 선택이 바뀌면 색과 이름표가 달라져야 하는데 라이브러리는 노드 객체를 캐싱한다.
   // refresh() 로 접근자를 다시 태워야 화면에 반영된다.
   useEffect(() => {
     fgRef.current?.refresh();
   }, [selectedId]);
+
+  // onEngineStop 이 끝내 불리지 않는 경우(배치가 멈추지 않거나 이벤트를 놓친 경우)를
+  // 대비한 보험. 카메라를 못 맞추면 화면이 비어 보이는데, 그건 오류도 남지 않아
+  // 사용자가 "고장났다"고만 느낀다. 늦게라도 반드시 한 번은 맞춘다.
+  useEffect(() => {
+    if (!ForceGraph3D || size.width === 0) return;
+    const timer = setTimeout(() => {
+      if (fittedRef.current) return;
+      fittedRef.current = true;
+      fgRef.current?.zoomToFit(400, 40);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [ForceGraph3D, size.width, graphData]);
 
   // 선택한 문서와 그 이웃에만 이름표를 붙인다. 나머지는 점만 보인다.
   // (상시 표시하면 2D 에서 겪은 글자 겹침이 3D 에서도 그대로 재현된다)
@@ -250,6 +276,17 @@ export default function KnowledgeMap3D({
             onBackgroundClick={() => onSelect(null)}
             warmupTicks={60}
             cooldownTicks={180}
+            // 배치가 멈추면 카메라를 그래프 전체에 맞춘다.
+            //
+            // 이게 없으면 화면이 그냥 비어 보인다. 라이브러리의 기본 카메라 거리는
+            // 고정인데 우리는 charge·링크 거리를 기본값보다 크게 키웠다. 그래서
+            // 점들이 시야 밖으로 퍼져 나가고, 배경이 흰색이라 "아무것도 없는" 화면이 된다.
+            // (실제로 그렇게 나왔다 — 오류도 경고도 없이 빈 화면만 보였다)
+            onEngineStop={() => {
+              if (fittedRef.current) return;
+              fittedRef.current = true;
+              fgRef.current?.zoomToFit(400, 40);
+            }}
           />
         )}
       </div>
