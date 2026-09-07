@@ -26,11 +26,44 @@ type MatchedDocument = {
 };
 
 export async function POST(request: NextRequest) {
-  return withSession(async () => {
+  return withSession(async (session) => {
     const body = await request.json().catch(() => null);
     const question = typeof body?.question === "string" ? body.question.trim() : "";
     if (!question) {
       return NextResponse.json({ error: "질문을 입력해주세요." }, { status: 400 });
+    }
+
+    // 요금 방어 (LESSONS §9-8).
+    //   이 라우트는 호출 한 번마다 OpenAI 를 두 번 부른다(임베딩 + 답변 생성).
+    //   로그인만 되어 있으면 무제한으로 부를 수 있었다 — 콘솔에서 for 문 한 줄이면 된다.
+    //   기준값과 근거는 20260907170000_qa_rate_limit.sql 참고 (사번당 10회/분, 200회/일).
+    //
+    //   한도 확인 자체가 실패하면 막는다. 확인 없이 통과시키면 제한이 무의미해진다
+    //   (로그인 가드와 같은 fail-closed 방침이다).
+    const supabase = getServerSupabaseClient();
+    const { data: guard, error: guardError } = await supabase.rpc("qa_guard_consume", {
+      p_employee_id: session.employeeId,
+    });
+
+    if (guardError) {
+      console.error("[qa] 사용량 확인 실패:", guardError);
+      return NextResponse.json(
+        { error: "질문 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요." },
+        { status: 503 },
+      );
+    }
+
+    const verdict = guard?.[0];
+    if (verdict && !verdict.allowed) {
+      const seconds = verdict.retry_after_seconds ?? 60;
+      const message =
+        verdict.reason === "day"
+          ? "오늘 질문할 수 있는 횟수를 모두 썼습니다. 내일 다시 이용해주세요."
+          : `질문이 너무 잦습니다. ${Math.max(1, Math.ceil(seconds))}초 후에 다시 시도해주세요.`;
+      return NextResponse.json(
+        { error: message },
+        { status: 429, headers: { "Retry-After": String(seconds) } },
+      );
     }
 
     // 질문 임베딩·답변 생성은 둘 다 OpenAI 호출이다. 여기를 감싸지 않으면 OpenAI
@@ -44,7 +77,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: AI_UNAVAILABLE_MESSAGE }, { status: 503 });
     }
 
-    const supabase = getServerSupabaseClient();
     // 의미(임베딩)와 키워드를 함께 쓴다. 임베딩만으로는 "사랑니"·"실란트" 같은
     // 한국어 고유명사를 놓쳐 엉뚱한 문서가 1위로 올라온다 (20260904000701 마이그레이션 참고)
     const { data: matches, error } = await supabase.rpc("match_documents", {
