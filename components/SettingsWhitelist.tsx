@@ -26,6 +26,8 @@ export default function SettingsWhitelist({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // 삭제 확인을 기다리는 줄. 한 번 더 눌러야 실제로 지운다(window.confirm 대체).
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   // 이름을 고치는 중인 줄과 입력값. 한 번에 한 줄만 고칠 수 있다.
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
@@ -106,12 +108,14 @@ export default function SettingsWhitelist({
 
   // 계정을 지워도 문서·로그에 남은 작성자·수정자 기록은 그대로 보존된다.
   // (created_by / edited_by는 화이트리스트를 참조하지 않는 스냅샷이다)
+  //
+  // 확인은 window.confirm() 이 아니라 화면 안 2단계 버튼으로 받는다.
+  //   실제 배포 환경(병원 업무용 브라우저)에서 네이티브 다이얼로그가 예외를 던지며
+  //   조용히 실패하는 것이 확인됐다. confirm() 이 막히면 false 가 아니라 예외가 나므로
+  //   이 함수가 그대로 끊기고, 관리자는 "삭제 버튼이 안 먹는다"만 겪게 된다.
+  //   노트 쪽(components/notes/NoteEditor.tsx)은 같은 이유로 이미 2단계 버튼을 쓴다.
   async function handleDelete(target: Employee) {
-    const label = target.name ? `${target.name}(${target.employee_id})` : `사원번호 ${target.employee_id}`;
-    if (!window.confirm(`${label}를 삭제할까요?\n\n로그인이 즉시 차단됩니다. 문서와 수정 로그에 남은 기록은 그대로 보존됩니다.`)) {
-      return;
-    }
-
+    setConfirmingId(null);
     setError(null);
     setDeletingId(target.employee_id);
 
@@ -205,14 +209,36 @@ export default function SettingsWhitelist({
                     <span className="text-xs text-gray-400">본인</span>
                   ) : employee.is_admin ? (
                     <span className="text-xs text-gray-400">삭제 불가</span>
+                  ) : confirmingId === employee.employee_id ? (
+                    <span className="flex items-center justify-end gap-2">
+                      <span className="text-xs text-gray-500">정말 지울까요?</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(employee)}
+                        disabled={deletingId !== null}
+                        className="rounded bg-red-600 px-2 py-0.5 text-xs text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {deletingId === employee.employee_id ? "삭제 중..." : "삭제"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingId(null)}
+                        className="text-xs text-gray-400 underline"
+                      >
+                        취소
+                      </button>
+                    </span>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => handleDelete(employee)}
+                      onClick={() => {
+                        setError(null);
+                        setConfirmingId(employee.employee_id);
+                      }}
                       disabled={deletingId !== null}
                       className="text-xs text-red-600 underline disabled:opacity-50"
                     >
-                      {deletingId === employee.employee_id ? "삭제 중..." : "삭제"}
+                      삭제
                     </button>
                   )}
                 </td>
