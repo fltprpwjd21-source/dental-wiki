@@ -15,10 +15,15 @@ import { isUuid } from "@/lib/uuid";
 //
 // 그래서 바이트를 우리 응답으로 그대로 흘려보낸다. 이제 두 겹이 된다.
 //   1) 진짜 same-origin 이 된다 — 서명 URL도 브라우저에 노출되지 않는다.
-//   2) Content-Security-Policy: sandbox 로 이 응답 안의 스크립트 실행을 막는다.
+//   2) Content-Security-Policy 로 이 응답 안의 스크립트 실행을 막는다.
 //      허용 목록이 뚫려 html·svg 가 들어오더라도 스크립트가 돌지 않는다.
-//      (sandbox 지시어에 값을 주지 않으면 모든 권한이 꺼진다. 브라우저 내장 PDF 뷰어와
-//       이미지 렌더링은 페이지 스크립트가 아니라서 영향받지 않는다)
+//
+// CSP 에 sandbox 를 쓰지 않는 이유 (2026-09-07)
+//   처음에는 `sandbox` 지시어를 값 없이 넣었다. 모든 권한이 꺼지니 가장 안전하다고
+//   생각했는데, **브라우저 내장 PDF 뷰어까지 막혀 미리보기가 빈 화면이 됐다.**
+//   sandbox 는 문서를 불투명한 출처로 만들어 플러그인 렌더링을 함께 차단한다.
+//   막고 싶었던 것은 "업로드된 파일 안의 스크립트"이므로 script-src 로 좁힌다 —
+//   PDF·이미지 렌더링은 페이지 스크립트가 아니라서 영향받지 않는다.
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -59,15 +64,21 @@ export async function GET(
       "Content-Type": contentType,
       // 선언한 형식대로만 해석하게 한다 (내용을 보고 형식을 추측하지 않게).
       "X-Content-Type-Options": "nosniff",
-      // 이 응답 안에서는 스크립트·폼·팝업 등 모든 것이 꺼진다.
-      "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self' data:; object-src 'self'",
+      // 이 응답이 HTML·SVG 로 해석되더라도 그 안의 스크립트는 실행되지 않는다.
+      // (default-src 나 sandbox 로 넓게 막으면 PDF 뷰어까지 막힌다 — 위 주석 참고)
+      "Content-Security-Policy":
+        "script-src 'none'; object-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
       // 파일명은 화면 표시용이다. 헤더에 그대로 넣으면 한글·따옴표에서 깨지므로 인코딩한다.
       "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(node.name)}`,
       // 서명 URL이 60초짜리라 오래 캐싱하면 안 되고, 로그인 사용자별 응답이라 private 이다.
       "Cache-Control": "private, max-age=60",
     });
+    // Content-Length 는 압축이 걸려 있지 않을 때만 넘긴다.
+    // fetch 는 gzip 을 알아서 풀어주므로, 압축된 응답의 길이를 그대로 붙이면 우리가
+    // 내보내는 실제 바이트 수와 어긋나 브라우저가 응답을 잘린 것으로 본다.
+    const encoding = upstream.headers.get("content-encoding");
     const length = upstream.headers.get("content-length");
-    if (length) headers.set("Content-Length", length);
+    if (length && !encoding) headers.set("Content-Length", length);
 
     return new NextResponse(upstream.body, { status: 200, headers });
   });
