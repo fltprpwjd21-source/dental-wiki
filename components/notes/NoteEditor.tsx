@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import MarkdownView from "@/components/notes/MarkdownView";
 import NoteLogSection from "@/components/notes/NoteLogSection";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
@@ -265,9 +266,23 @@ export default function NoteEditor({
 
         <div className="flex shrink-0 gap-2 text-xs">
           {mode === "view" ? (
-            <button type="button" onClick={startEditing} className="rounded border border-brand px-3 py-1.5 text-brand hover:bg-surface">
-              편집
-            </button>
+            <>
+              {/*
+                업무 프로세스가 바뀌어 인수인계 자료를 고쳤다면, 그걸 공지로도 알려야 한다.
+                여기서 누르면 이 노트가 연결된 채로 공지 작성 화면이 열리고,
+                제목만 확인하면 내용은 그대로 이어진다 (복사가 아니라 연결이라
+                나중에 이 노트를 고치면 공지에서도 바뀐 내용이 보인다).
+              */}
+              <Link
+                href={`/notices/new?note=${nodeId}`}
+                className="rounded border border-hair-2 px-3 py-1.5 text-ink-2 hover:border-navy hover:text-navy"
+              >
+                공지 등록
+              </Link>
+              <button type="button" onClick={startEditing} className="rounded border border-navy px-3 py-1.5 text-navy hover:bg-l-cal">
+                편집
+              </button>
+            </>
           ) : (
             <>
               <button

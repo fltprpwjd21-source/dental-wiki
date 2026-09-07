@@ -1,35 +1,140 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────
+   색을 층으로 쌓는다.
+   맨 위 남색 머리(헤더·탭) → 흰 창(카드·목록) → 옅은 창(캘린더)
+   → 조금 더 진한 종이(문서·본문) → 맨 아래 남색 띠.
+   층마다 아주 조금씩만 달라서, 선을 긋지 않아도 경계가 읽힌다.
+   ───────────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #222222;
+  /* 어두운 층 — 이 셋만 어둡다 */
+  --head: #0b1a3c;        /* 헤더 */
+  --tab: #12264f;         /* 탭 줄 */
+  --navy: #0c1c40;        /* 버튼·강조 블록 */
+  --card-ink: #07122a;    /* 공지 카드·슬라이드 */
 
-  /* 한양대학교병원(seoul.hyumc.com) 참고 브랜드 컬러 */
-  --brand: #143074;
-  --brand-dark: #0c3b7b;
-  --accent: #0b66c3;
-  --highlight: #ff9000;
-  --brand-muted: #a6afba;
-  --surface: #f4f6fa;
-  --ink: #222222;
+  /* 밝은 층 — 위에서 아래로 조금씩 진해진다 */
+  --l-card: #ffffff;      /* 카드뉴스 창 · 목록 */
+  --l-lab: #fcfdff;       /* 기공물 */
+  --l-form: #f9fafd;      /* 작성 */
+  --l-cal: #f7fafd;       /* 캘린더 */
+  --l-body: #f4f7fc;      /* 본문 */
+  --l-doc: #f1f5fb;       /* 최근 문서 */
+
+  --on-light: #11224a;
+  --on-light-2: #5a6579;
+  --on-light-3: #98a2b3;
+  --hair: #dde4ee;
+  --hair-2: #cdd7e6;
+
+  /* 분류색 — 어두운 바탕용(밝게) / 밝은 바탕용(진하게) */
+  --sched: #56b8cf;  --sched-d: #1a7086;
+  --meet: #6fa6ee;   --meet-d: #2b66b2;
+  --rule: #8f97e8;   --rule-d: #4750a6;
+  --amber: #ef7c00;
+
+  /* 상태색 — 파랑 밖으로 나가는 유일한 자리. 늦었는지 아닌지는 장식이 아니라 의미다 */
+  --late: #a8231a;
+  --soon: #a35f0c;
+  --done: #2b6f5f;
+
+  --background: var(--l-card);
+  --foreground: var(--on-light);
+
+  /* 예전 이름들 — 로그인·문서·설정 화면이 아직 이 이름으로 색을 부른다.
+     한 번에 다 갈아엎지 않고 새 팔레트로 이어 붙여, 손대지 않은 화면도
+     같은 색 세계 안에 들어오게 한다. */
+  --brand: var(--navy);
+  --brand-dark: var(--head);
+  --accent: var(--meet-d);
+  --brand-muted: var(--on-light-2);
+  --surface: var(--l-cal);
+  --highlight: var(--amber);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-head: var(--head);
+  --color-tab: var(--tab);
+  --color-navy: var(--navy);
+  --color-card-ink: var(--card-ink);
+
+  --color-l-card: var(--l-card);
+  --color-l-lab: var(--l-lab);
+  --color-l-form: var(--l-form);
+  --color-l-cal: var(--l-cal);
+  --color-l-body: var(--l-body);
+  --color-l-doc: var(--l-doc);
+
+  --color-ink: var(--on-light);
+  --color-ink-2: var(--on-light-2);
+  --color-ink-3: var(--on-light-3);
+  --color-hair: var(--hair);
+  --color-hair-2: var(--hair-2);
+
+  --color-sched: var(--sched);
+  --color-sched-d: var(--sched-d);
+  --color-meet: var(--meet);
+  --color-meet-d: var(--meet-d);
+  --color-rule: var(--rule);
+  --color-rule-d: var(--rule-d);
+  --color-amber: var(--amber);
+  --color-late: var(--late);
+  --color-soon: var(--soon);
+  --color-done: var(--done);
+
   --color-brand: var(--brand);
   --color-brand-dark: var(--brand-dark);
   --color-accent: var(--accent);
-  --color-highlight: var(--highlight);
   --color-brand-muted: var(--brand-muted);
   --color-surface: var(--surface);
-  --color-ink: var(--ink);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-highlight: var(--highlight);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --font-sans: var(--font-noto-sans-kr);
+  --font-display: var(--font-nanum-myeongjo);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* 예전에는 여기서 Arial 로 덮어써서, 불러온 폰트도 한글 스택도 적용되지 않았다.
+     한글이 OS 기본 글꼴로 렌더링되는 바람에 어떤 디자인을 해도 그대로 보이지 않았다. */
+  font-family: var(--font-noto-sans-kr), -apple-system, "Apple SD Gothic Neo",
+    "Malgun Gothic", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* 제목은 명조. 병원 공지에 이 얼굴이 훨씬 잘 앉는다. */
+.font-display {
+  font-family: var(--font-nanum-myeongjo), serif;
+}
+
+/* 움직임을 원치 않는 사람에게는 전부 끈다 (어지럼증은 접근성 문제다) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* 카드가 차례로 올라오는 등장 — 끝난 자리는 늘 보이는 상태다 */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+}
+.animate-rise { animation: rise .62s cubic-bezier(.2,.7,.3,1) backwards; }
+
+/* 안 읽은 공지 점 */
+@keyframes blip {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,124,0,.5); }
+  55% { box-shadow: 0 0 0 5px rgba(239,124,0,0); }
+}
+.animate-blip { animation: blip 2.6s ease-in-out infinite; }
+
+/* 캘린더의 오늘 */
+@keyframes ring {
+  0% { transform: scale(1); opacity: .7; }
+  70%, 100% { transform: scale(1.45); opacity: 0; }
+}
+.animate-ring { animation: ring 3s ease-out infinite; }

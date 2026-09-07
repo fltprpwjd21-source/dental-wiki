@@ -19,7 +19,7 @@ export default function LogoutButton() {
       type="button"
       onClick={handleLogout}
       disabled={isLoggingOut}
-      className="text-sm text-gray-600 hover:text-gray-900 underline disabled:opacity-50"
+      className="whitespace-nowrap text-[11px] text-white/60 underline-offset-2 hover:text-white hover:underline disabled:opacity-50"
     >
       {isLoggingOut ? "로그아웃 중..." : "로그아웃"}
     </button>

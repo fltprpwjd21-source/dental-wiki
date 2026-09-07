@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CATEGORY_LABELS, type DocumentCategory } from "@/lib/categories";
 import DocumentLogSection from "@/components/DocumentLogSection";
@@ -171,13 +172,22 @@ export default function DocumentDetail({ document }: { document: Document }) {
         <div className="space-y-4">
           <h1 className="mb-4 text-lg font-semibold text-brand">{title}</h1>
           <p className="whitespace-pre-wrap text-sm text-gray-800">{content}</p>
-          <button
-            type="button"
-            onClick={startEditing}
-            className="rounded border border-brand px-4 py-2 text-sm text-brand hover:bg-surface"
-          >
-            수정하기
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={startEditing}
+              className="border border-navy px-4 py-2 text-sm text-navy hover:bg-l-cal"
+            >
+              수정하기
+            </button>
+            {/* 문서를 고쳤으면 공지로도 알릴 수 있어야 한다 — 노트와 같은 흐름이다 */}
+            <Link
+              href={`/notices/new?document=${document.id}`}
+              className="border border-hair-2 px-4 py-2 text-sm text-ink-2 hover:border-navy hover:text-navy"
+            >
+              공지 등록
+            </Link>
+          </div>
         </div>
       )}
 

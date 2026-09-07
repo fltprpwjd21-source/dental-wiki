@@ -118,8 +118,12 @@ export default function NotesApp() {
   const selectedFolderNode =
     selected?.type === "folder" ? flatNodes?.find((n) => n.id === selected.id) ?? null : null;
 
+  // 높이를 h-[calc(100vh-64px)] 로 잡지 않는다 — 헤더에 탭 줄이 생기거나 좁은 화면에서
+  // 헤더가 두 줄로 접히면 그 64px 가 바로 틀어져 화면이 잘리거나 남는다.
+  // body(flex column) → main(flex-1) → 여기(flex-1) 로 이어받아 남는 높이를 그대로 쓴다.
+  //
   // min-h-0: 플렉스 아이템은 기본적으로 min-height:auto라서, 내용이 길어지면
-  // 지정한 h-[calc(...)]를 무시하고 페이지 전체가 늘어난다. 트리·본문 각각
+  // 지정한 높이를 무시하고 페이지 전체가 늘어난다. 트리·본문 각각
   // 안에서만 스크롤되게 하려면 이 두 컨테이너 모두에 min-h-0이 필요하다.
   //
   // 두 칼럼에 h-full을 직접 주지 않는다 — 플렉스 아이템은 cross-size가
@@ -129,9 +133,9 @@ export default function NotesApp() {
   // 현상이 있었다 — 그냥 아무 높이도 안 주고 stretch에 맡기면 정확히 656px로
   // 채워진다 (직접 확인함).
   return (
-    <div className="mx-auto flex h-[calc(100vh-64px)] min-h-0 w-full max-w-5xl flex-1">
+    <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 bg-l-card">
       <div
-        className={`min-h-0 w-full shrink-0 flex-col border-r border-gray-100 md:flex md:w-64 ${
+        className={`min-h-0 w-full shrink-0 flex-col border-r border-hair bg-l-cal md:flex md:w-64 ${
           mobileView === "tree" ? "flex" : "hidden"
         }`}
       >
@@ -152,17 +156,17 @@ export default function NotesApp() {
           mobileView === "content" ? "flex" : "hidden md:flex"
         }`}
       >
-        <div className="shrink-0 border-b border-gray-100 p-2 md:hidden">
-          <button type="button" onClick={() => setMobileView("tree")} className="text-xs text-gray-500 underline">
+        <div className="shrink-0 border-b border-hair p-2 md:hidden">
+          <button type="button" onClick={() => setMobileView("tree")} className="text-xs text-ink-2 underline">
             ← 트리로
           </button>
         </div>
 
-        {error && <p className="shrink-0 p-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="shrink-0 p-3 text-sm text-late">{error}</p>}
 
         <div className="min-h-0 flex-1">
           {!selected && (
-            <p className="p-4 text-sm text-gray-400">왼쪽 트리에서 폴더나 노트를 선택하세요.</p>
+            <p className="p-4 text-sm text-ink-2">왼쪽 트리에서 폴더나 노트를 선택하세요.</p>
           )}
           {selected?.type === "note" && (
             <NoteEditor

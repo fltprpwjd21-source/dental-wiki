@@ -7,6 +7,8 @@ import { CATEGORY_LABELS, type DocumentCategory } from "@/lib/categories";
 
 type Source = { id: string; title: string; category: DocumentCategory };
 
+// 헤더 검색창에서 넘어온 ?q= 가 있을 때만 나타난다.
+// 질문 칸이 따로 없으므로, 질문이 없으면 이 덩어리는 아예 그려지지 않는다.
 export default function QaScreen() {
   const searchParams = useSearchParams();
   const [answer, setAnswer] = useState<string | null>(null);
@@ -30,12 +32,10 @@ export default function QaScreen() {
         body: JSON.stringify({ question: text }),
       });
       const data = await response.json();
-
       if (!response.ok) {
         setError(data.error ?? "답변을 가져오지 못했습니다.");
         return;
       }
-
       setAnswer(data.answer);
       setSources(data.sources ?? []);
     } catch {
@@ -45,10 +45,8 @@ export default function QaScreen() {
     }
   }
 
-  // 맨 위 헤더 검색창에서 넘어온 ?q= 를 읽어 자동 실행한다 (질문 입력창은 헤더에만 있음)
-  // 이 화면은 홈(/)이므로 헤더에서 다시 검색해도 컴포넌트가 다시 만들어지지 않는다.
-  // 그래서 "한 번 실행했는가"(boolean)로 막으면 두 번째 질문이 무시된다.
-  // "어떤 질문을 실행했는가"를 기억해 질문이 바뀔 때마다 다시 검색한다.
+  // 이 화면은 홈이라 헤더에서 다시 검색해도 컴포넌트가 새로 만들어지지 않는다.
+  // "한 번 실행했는가"로 막으면 두 번째 질문이 무시되므로, 어떤 질문을 실행했는지 기억한다.
   useEffect(() => {
     const q = searchParams.get("q");
     if (q && q !== lastRunQuestion.current) {
@@ -57,76 +55,56 @@ export default function QaScreen() {
     }
   }, [searchParams]);
 
+  const q = searchParams.get("q");
+  if (!q) return null;
+
   return (
-    /* 바깥 <main>·최대폭·좌우 여백은 app/page.tsx 가 맡는다 (지식 지도 배너와 같은
-       단을 쓰기 위해서다). 여기서는 세로 간격만 책임진다. */
-    <div className="flex flex-1 flex-col gap-6 pt-6">
-      <div>
-        <h1 className="mb-2 text-lg font-semibold text-brand">치과위키에 질문하기</h1>
-        {/* DESIGN.md: "상단에 3개 카테고리 바로가기". 예전엔 본문 글자 사이에 밑줄 친
-            텍스트 링크로만 있어 안내 문구처럼 보였다. 카테고리 탐색 화면의 탭 모양을
-            그대로 재사용해 눌러야 할 바로가기라는 게 분명히 보이게 했다
-            (좁은 화면에서 가로 스크롤되는 것까지 그 화면에서 이미 검증된 패턴이다). */}
-        <nav className="-mx-4 flex gap-2 overflow-x-auto border-b border-gray-200 px-4">
-          {(Object.entries(CATEGORY_LABELS) as [DocumentCategory, string][]).map(
-            ([value, label]) => (
-              <Link
-                key={value}
-                href={`/categories/${value}`}
-                className="shrink-0 whitespace-nowrap px-3 py-2 text-sm text-gray-500 hover:text-brand"
+    <section className="border-b border-hair bg-l-body">
+      <div className="mx-auto max-w-6xl px-4 py-5">
+        <p className="mb-2 text-[10.5px] tracking-[.14em] text-ink-2">질문</p>
+        <h1 className="mb-4 font-display text-xl font-extrabold tracking-tight text-ink text-balance md:text-2xl">
+          {question ?? q}
+        </h1>
+
+        {isSubmitting && <p className="text-sm text-ink-2">찾는 중…</p>}
+
+        {error && (
+          <div role="alert" className="space-y-2">
+            <p className="text-sm text-late">{error}</p>
+            {question && (
+              <button
+                type="button"
+                onClick={() => runSearch(question)}
+                disabled={isSubmitting}
+                className="border border-navy px-3 py-1.5 text-xs text-navy hover:bg-white disabled:opacity-50"
               >
-                {label}
-              </Link>
-            ),
-          )}
-        </nav>
-      </div>
+                다시 시도
+              </button>
+            )}
+          </div>
+        )}
 
-      {isSubmitting && <p className="text-sm text-brand-muted">검색 중...</p>}
+        {answer && (
+          <div className="border-l-2 border-hair-2 pl-4">
+            <p className="whitespace-pre-wrap text-[13px] leading-[1.95] text-[#2c3648]">{answer}</p>
 
-      {error && (
-        <div role="alert" className="space-y-2">
-          <p className="text-sm text-red-600">{error}</p>
-          {question && (
-            <button
-              type="button"
-              onClick={() => runSearch(question)}
-              disabled={isSubmitting}
-              className="rounded border border-brand px-3 py-1.5 text-sm text-brand hover:bg-surface disabled:opacity-50"
-            >
-              다시 시도
-            </button>
-          )}
-        </div>
-      )}
-
-      {!isSubmitting && !error && !answer && (
-        <p className="text-sm text-brand-muted">
-          위 검색창에 궁금한 내용을 입력해보세요.
-        </p>
-      )}
-
-      {answer && (
-        <div className="space-y-3 rounded-lg border border-gray-200 bg-surface p-4">
-          <p className="whitespace-pre-wrap text-sm text-ink">{answer}</p>
-
-          {sources.length > 0 && (
-            <div className="space-y-1 border-t border-gray-200 pt-3">
-              <p className="text-xs text-brand-muted">근거 문서</p>
-              <ul className="space-y-1">
+            {sources.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-hair pt-2.5 text-[11px]">
+                <span className="text-ink-2">출처</span>
                 {sources.map((source) => (
-                  <li key={source.id} className="text-xs text-gray-600">
-                    [{CATEGORY_LABELS[source.category]}]{" "}
-                    <Link href={`/documents/${source.id}`} className="text-accent underline hover:text-brand-dark">
-                      {source.title}
-                    </Link>
-                  </li>
+                  <Link
+                    key={source.id}
+                    href={`/documents/${source.id}`}
+                    className="border-b border-meet-d/30 text-meet-d hover:border-meet-d"
+                  >
+                    {CATEGORY_LABELS[source.category]} · {source.title}
+                  </Link>
                 ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
