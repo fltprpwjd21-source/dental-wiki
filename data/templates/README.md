@@ -14,14 +14,13 @@
 4. 전부 채운 뒤 등록합니다.
 
 ```bash
-cp data/templates/1-인수인계.md "data/seed-docs/보철과-임플란트2차수술.md"
+cp data/templates/2-수가.md "data/seed-docs/임플란트-급여수가.md"
 # 내용을 채운 다음
 npm run seed:docs
 ```
 
 | 원본 문서 | 쓸 틀 | `category` 값 |
 |---|---|---|
-| 진료과별 인수인계 (주로 파워포인트) | `1-인수인계.md` | `handover` |
 | 보험 수가·비보험 항목 (주로 엑셀) | `2-수가.md` | `insurance` |
 | 병원 내규·운영회칙 (종이·공유 파일) | `3-내규.md` | `policy` |
 
@@ -31,13 +30,14 @@ npm run seed:docs
 
 ```markdown
 ---
-category: handover
-title: 보철과 인수인계 - 임플란트 2차 수술 준비
+category: insurance
+title: 치과임플란트 급여 수가
 ---
 ```
 
 - `---` 로 시작하고 `---` 로 닫습니다. 이 형식이 깨지면 등록이 실패합니다.
-- `category` 는 `handover` / `insurance` / `policy` 중 **하나만** 씁니다. 오타가 나면 실패합니다.
+- `category` 는 `meeting` / `insurance` / `policy` 중 **하나만** 씁니다. 오타가 나면 실패합니다.
+  (`handover` 는 2026-09-08 에 뺐습니다 — 인수인계 자료는 보관함에서 꺼내 씁니다.)
 - `title` 은 화면 목록과 답변의 "근거 문서"에 그대로 표시됩니다.
   나중에 앱에서 수정할 수 있으니 부담 갖지 않아도 됩니다.
 

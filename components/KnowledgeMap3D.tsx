@@ -32,7 +32,6 @@ type ForceGraph3DType = typeof ForceGraph3DComponent;
 
 // 2D 배너와 같은 색을 쓴다 — 같은 데이터를 두 화면에서 다른 색으로 보여주지 않는다.
 const CATEGORY_COLOR: Record<DocumentCategory, string> = {
-  handover: "#c2701c",
   meeting: "#2b66b2",
   insurance: "#0f9b7a",
   policy: "#6d55d0",

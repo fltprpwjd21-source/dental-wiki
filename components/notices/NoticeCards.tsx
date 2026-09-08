@@ -24,7 +24,10 @@ export default function NoticeCards({
         <div className="flex items-baseline gap-2.5 pb-3">
           <h2 className="font-display text-base font-bold tracking-tight text-ink">공지</h2>
           {unreadIds.size > 0 && (
-            <span className="font-mono text-[10.5px] text-ink-3">안 읽음 {unreadIds.size}</span>
+            <span className="flex items-center gap-1.5 text-[10.5px] text-ink-2">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber" />
+              읽지 않음 <span className="font-mono tabular-nums">{unreadIds.size}</span>
+            </span>
           )}
           <Link href="/notices" className="ml-auto text-[11.5px] text-meet-d hover:text-ink">
             전체 보기 →
@@ -72,10 +75,12 @@ export default function NoticeCards({
 
                 <span className="relative mt-auto flex items-center gap-2">
                   {unreadIds.has(notice.id) && (
-                    <span
-                      aria-label="안 읽음"
-                      className="animate-blip ml-auto h-1.5 w-1.5 rounded-full bg-amber"
-                    />
+                    // 점만 두면 "이 주황이 무슨 뜻이냐"를 매번 묻게 된다.
+                    // 글자를 붙여 주황의 뜻을 카드 안에서 스스로 설명하게 한다.
+                    <span className="ml-auto flex items-center gap-1 whitespace-nowrap text-[8px] font-medium tracking-tight text-amber md:gap-1.5 md:text-[10px] md:tracking-normal">
+                      <span aria-hidden className="animate-blip h-1.5 w-1.5 rounded-full bg-amber" />
+                      읽지 않음
+                    </span>
                   )}
                 </span>
               </Link>

@@ -164,14 +164,13 @@ Vercel 배포도 자동으로 막힌다.** 사이트가 깨진 채로 올라가�
 
    | 원본 | 틀 | category |
    |---|---|---|
-   | 진료과별 인수인계 | `1-인수인계.md` | `handover` |
    | 보험·비보험 수가 | `2-수가.md` | `insurance` |
    | 내규·운영회칙 | `3-내규.md` | `policy` |
 
 2. `data/seed-docs/` 에 저장하고 내용을 채운다. **문서 하나에 주제 하나**로 나눈다.
 
    ```bash
-   cp data/templates/1-인수인계.md "data/seed-docs/보철과-임플란트2차수술.md"
+   cp data/templates/2-수가.md "data/seed-docs/임플란트-급여수가.md"
    ```
 
 3. 등록 전에 형식을 검사한다. 이 단계는 DB도 OpenAI도 건드리지 않아 비용이 들지 않는다.

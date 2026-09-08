@@ -4,7 +4,7 @@ import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { buildDocumentPayload } from "@/lib/document-write";
 import type { DocumentCategory } from "@/lib/categories";
 
-const VALID_CATEGORIES: DocumentCategory[] = ["handover", "insurance", "policy"];
+const VALID_CATEGORIES: DocumentCategory[] = ["meeting", "insurance", "policy"];
 
 // PLAN 7·8번: 신규 문서 등록. 최초 등록도 하나의 수정 이력(action: create)으로 남긴다.
 //

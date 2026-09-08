@@ -7,7 +7,6 @@ import type { DocumentCategory } from "@/lib/categories";
 import type { KnowledgeMap } from "@/lib/knowledge-map";
 
 const CATEGORY_COLOR: Record<DocumentCategory, string> = {
-  handover: "#c2701c",
   meeting: "#2b66b2",
   insurance: "#0f9b7a",
   policy: "#6d55d0",

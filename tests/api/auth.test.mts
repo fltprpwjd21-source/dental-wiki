@@ -42,7 +42,7 @@ describe("로그인하지 않은 상태", () => {
     for (const path of [
       "/",
       "/settings",
-      "/categories/handover",
+      "/categories/meeting",
       "/categories/insurance",
       "/categories/policy",
       "/documents/new",

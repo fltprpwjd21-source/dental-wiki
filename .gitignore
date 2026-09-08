@@ -47,3 +47,6 @@ next-env.d.ts
 
 # 작업 중 지운 파일을 임시로 모아두는 곳 (CLAUDE.md 규칙 — 바로 삭제하지 않는다)
 trash-can/
+
+# git worktree 작업 폴더 (커밋 대상이 아니다 — 안에 .next 빌드 산출물까지 들어 있다)
+/.claude/worktrees/

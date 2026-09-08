@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 
 // 탭 일곱 개. 좁은 화면에서는 옆으로 흐른다.
 //
+// 「인수인계」는 뺐다 — 인수인계 자료는 보관함에서 꺼내 쓴다.
+//
 // 「노트」는 보관함으로 이름을 바꿨다 — 폴더에 문서·사진·PDF를 넣어 두는 곳이라
 // '노트'보다 하는 일에 가깝다.
 const TABS = [
   { href: "/", label: "홈" },
   { href: "/notices", label: "공지" },
-  { href: "/categories/handover", label: "인수인계" },
   { href: "/categories/meeting", label: "회의록" },
   { href: "/categories/insurance", label: "수가·비보험" },
   { href: "/categories/policy", label: "내규" },

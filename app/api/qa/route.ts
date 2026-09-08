@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { createEmbedding } from "@/lib/embeddings";
+import type { DocumentCategory } from "@/lib/categories";
 
 // 하이브리드 검색(의미 0.6 + 키워드 0.4) 점수 기준.
 // 실제 질문 14개로 측정해 정한 값이다.
@@ -19,7 +20,7 @@ const AI_UNAVAILABLE_MESSAGE = "질문 처리 중 오류가 발생했습니다. 
 
 type MatchedDocument = {
   id: string;
-  category: "handover" | "insurance" | "policy";
+  category: DocumentCategory;
   title: string;
   content: string;
   similarity: number;
