@@ -63,12 +63,29 @@ export default async function NoticePage({
   const canEdit = notice.author_id === session.employeeId || session.isAdmin;
 
   // 읽은 사람 수 / 전체 인원. 방금 이 요청에서 남긴 내 기록도 포함된다.
+  //
+  // 관리 계정(00001)은 양쪽에서 뺀다.
+  //   실제로 진료를 보는 사람이 아니라 화이트리스트를 관리하려고 있는 계정이라,
+  //   분모에 넣으면 "14명 중 11명"처럼 영원히 채워지지 않는 수가 되고,
+  //   관리자가 공지를 열어보면 분자까지 부풀어 누가 안 읽었는지 흐려진다.
+  const { data: admins } = await supabase
+    .from("employee_whitelist")
+    .select("employee_id")
+    .eq("is_admin", true);
+  const adminIds = (admins ?? []).map((a) => a.employee_id as string);
+  // in 필터는 빈 목록을 받으면 문법 오류가 나므로, 없을 때 쓸 자리표시자를 둔다.
+  const adminFilter = `(${(adminIds.length > 0 ? adminIds : ["__none__"]).join(",")})`;
+
   const [{ count: readCount }, { count: staffCount }] = await Promise.all([
     supabase
       .from("notice_reads")
       .select("employee_id", { count: "exact", head: true })
-      .eq("notice_id", notice.id),
-    supabase.from("employee_whitelist").select("employee_id", { count: "exact", head: true }),
+      .eq("notice_id", notice.id)
+      .not("employee_id", "in", adminFilter),
+    supabase
+      .from("employee_whitelist")
+      .select("employee_id", { count: "exact", head: true })
+      .eq("is_admin", false),
   ]);
 
   return (
