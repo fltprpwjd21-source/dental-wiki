@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/uuid";
+import { visibleNoteLogs } from "@/lib/note-logs";
 
 // 노트 하단에 보여줄 "누가 언제 무엇을 했는지" 기록.
 //
@@ -27,18 +28,18 @@ export async function GET(
       .from("node_logs")
       .select("id, action, actor, detail, created_at")
       .eq("node_id", id)
-      // 만든 기록은 빼고 보여준다.
-      //   이건 "수정 기록"이고, 갓 만든 노트에 "노트 만듦" 한 줄만 떠 있는 것은
-      //   알려주는 게 없다. 만든 사람·시각은 노트 자체(created_by·created_at)에
-      //   이미 남아 있으므로 기록이 사라지는 것도 아니다.
-      .not("action", "in", "(create_note,create_folder)")
+      // 전부 가져온다 — 무엇을 감추고 무엇을 「업로드」로 부를지는
+      // lib/note-logs.ts 가 정한다(그 파일의 주석 참고). 첫 저장을 찾아내려면
+      // 만든 기록까지 함께 봐야 하므로 여기서 미리 걸러내지 않는다.
       .order("created_at", { ascending: false });
 
     if (error) {
       return NextResponse.json({ error: "기록을 불러오지 못했습니다." }, { status: 500 });
     }
 
-    const actors = [...new Set((logs ?? []).map((l) => l.actor as string))];
+    const shown = visibleNoteLogs(logs ?? []);
+
+    const actors = [...new Set(shown.map((l) => l.actor as string))];
     const { data: people } = await supabase
       .from("employee_whitelist")
       .select("employee_id, name")
@@ -49,7 +50,7 @@ export async function GET(
     );
 
     return NextResponse.json({
-      logs: (logs ?? []).map((log) => ({
+      logs: shown.map((log) => ({
         id: log.id,
         action: log.action,
         actor: log.actor,

@@ -7,6 +7,9 @@ import { useEffect, useState } from "react";
 // 문서 쪽 "수정 로그 보기"(components/DocumentLogSection.tsx)와 같은 자리·같은 성격이다.
 // 다만 노트는 이전 본문을 보관하지 않으므로 되돌리기가 없고, 행위와 사람·시각만 보여준다.
 const ACTION_LABEL: Record<string, string> = {
+  // 처음 올린 것은 고친 게 아니다. 첫 저장은 서버가 upload_note 로 바꿔 내려준다
+  // (lib/note-logs.ts) — 그 뒤의 저장만 「내용 수정」이다.
+  upload_note: "업로드",
   create_folder: "폴더 만듦",
   create_note: "노트 만듦",
   update_note: "내용 수정",
@@ -65,7 +68,9 @@ export default function NoteLogSection({ nodeId, version }: { nodeId: string; ve
   return (
     <details className="mt-8 border-t border-gray-100 pt-4">
       <summary className="cursor-pointer text-xs font-medium text-gray-500 hover:text-brand">
-        수정 기록 {logs ? `(${logs.length}건)` : ""}
+        {/* 「수정 기록」이 아니라 「기록」이다 — 업로드·이름 변경·휴지통처럼
+            수정이 아닌 일도 여기 들어온다 */}
+        기록 {logs ? `(${logs.length}건)` : ""}
       </summary>
 
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
