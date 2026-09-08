@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { CATEGORY_LABELS, CATEGORY_SUB, type DocumentCategory } from "@/lib/categories";
 import { isRecentlyUpdated, makeSummary } from "@/lib/notices";
+import CategorySearch from "@/components/CategorySearch";
 
 const VALID_CATEGORIES = Object.keys(CATEGORY_LABELS) as DocumentCategory[];
 
@@ -36,12 +37,18 @@ export default async function CategoryPage({
             {CATEGORY_LABELS[activeCategory]}
           </h1>
           <span className="mb-0.5 text-[11px] text-ink-2">{CATEGORY_SUB[activeCategory]}</span>
-          <Link
-            href={`/documents/new?category=${activeCategory}`}
-            className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap bg-navy px-4 py-2 text-[11.5px] font-medium text-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_20px_-9px_rgba(12,28,64,.65)]"
-          >
-            <span aria-hidden className="text-[13px] leading-none">+</span> 문서 작성
-          </Link>
+
+          {/* 이 탭 안에서만 찾는 검색칸. 상단 검색칸(전체)을 대신하지 않고 옆에 하나 더 둔다
+              — 어디 있는지 모를 때 쓰는 길이 사라지면 안 된다. */}
+          <div className="ml-auto flex w-full min-w-0 items-center gap-2 sm:w-auto">
+            <CategorySearch category={activeCategory} />
+            <Link
+              href={`/documents/new?category=${activeCategory}`}
+              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap bg-navy px-4 py-2 text-[11.5px] font-medium text-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_20px_-9px_rgba(12,28,64,.65)]"
+            >
+              <span aria-hidden className="text-[13px] leading-none">+</span> 문서 작성
+            </Link>
+          </div>
         </div>
 
         <p className="pb-3 font-mono text-[10.5px] text-ink-3">문서 {documents?.length ?? 0}</p>

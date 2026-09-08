@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { createEmbedding } from "@/lib/embeddings";
-import type { DocumentCategory } from "@/lib/categories";
+import { CATEGORY_LABELS, type DocumentCategory } from "@/lib/categories";
 
 // 하이브리드 검색(의미 0.6 + 키워드 0.4) 점수 기준.
 // 실제 질문 14개로 측정해 정한 값이다.
@@ -34,6 +34,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "질문을 입력해주세요." }, { status: 400 });
     }
 
+    // 카테고리를 넘기면 그 탭 안에서만 찾는다. 안 넘기면 전체를 찾는다.
+    //
+    // 모르는 값이 오면 400 으로 막는다 — 조용히 전체 검색으로 떨어지면
+    // "내규에서만 찾았는데 수가 답이 나왔다"처럼 범위가 어긋난 걸 아무도 모른다.
+    const rawCategory = typeof body?.category === "string" ? body.category : null;
+    if (rawCategory !== null && !(rawCategory in CATEGORY_LABELS)) {
+      return NextResponse.json({ error: "없는 분류입니다." }, { status: 400 });
+    }
+    const category = rawCategory as DocumentCategory | null;
+
     // 질문 임베딩·답변 생성은 둘 다 OpenAI 호출이다. 여기를 감싸지 않으면 OpenAI
     // 장애·요금 한도 초과 시 처리되지 않은 예외가 그대로 500으로 나가고, 클라이언트는
     // 어떤 오류인지 알 수 없는 빈 응답을 받는다. 하나의 문구로 묶어 안내한다.
@@ -53,6 +63,7 @@ export async function POST(request: NextRequest) {
       query_text: question,
       match_threshold: MATCH_THRESHOLD,
       match_count: MATCH_COUNT,
+      filter_category: category,
     });
 
     if (error) {
