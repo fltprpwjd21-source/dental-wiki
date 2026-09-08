@@ -14,9 +14,20 @@ import { CATEGORY_LABELS, type DocumentCategory } from "@/lib/categories";
 // 0.22 이상으로 올리면 정답인 질문이 탈락하기 시작해 0.2 로 둔다.
 const MATCH_THRESHOLD = 0.2;
 const MATCH_COUNT = 5;
+// 답을 못 찾았을 때 대신 보여줄 문서 개수. 답변 아래 한 덩어리로 들어가므로 짧게 둔다.
+const KEYWORD_MATCH_COUNT = 6;
 const NO_MATCH_ANSWER = "위키에 등록된 정보가 없습니다.";
 const CHAT_MODEL = process.env.OPENAI_CHAT_MODEL ?? "gpt-4o-mini";
 const AI_UNAVAILABLE_MESSAGE = "질문 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+
+// 낱말 검색 결과. 답변 근거(MatchedDocument)와 달리 본문을 담지 않는다 —
+// 답을 만드는 데 쓰지 않고 목록으로만 보여주기 때문이다.
+type KeywordMatch = {
+  id: string;
+  category: DocumentCategory;
+  title: string;
+  rank: number;
+};
 
 type MatchedDocument = {
   id: string;
@@ -72,9 +83,24 @@ export async function POST(request: NextRequest) {
 
     const matchedDocuments = (matches ?? []) as MatchedDocument[];
 
-    // PRD 5번①: 근거 문서가 없으면 추측하지 않고 정해진 문장만 답한다
+    // PRD 5번①: 근거 문서가 없으면 추측하지 않고 정해진 문장만 답한다.
+    //
+    // 다만 "없습니다"로 끝내지 않는다. 이 칸은 「검색하거나 질문하기」인데
+    // 지금까지는 질문만 처리했고, 낱말 하나를 넣으면 막다른 길이었다 —
+    // 「사랑니」는 정답 문서가 1위였는데도 0.1872 로 문턱값 0.2 에 살짝 못 미쳐
+    // 아무것도 안 보였다 (20260908180000 마이그레이션에 측정값이 있다).
+    // 답할 근거가 없어도 그 낱말이 든 문서는 찾아 준다.
     if (matchedDocuments.length === 0) {
-      return NextResponse.json({ answer: NO_MATCH_ANSWER, sources: [] });
+      const { data: found } = await supabase.rpc("search_documents", {
+        query_text: question,
+        filter_category: category,
+        match_count: KEYWORD_MATCH_COUNT,
+      });
+      return NextResponse.json({
+        answer: NO_MATCH_ANSWER,
+        sources: [],
+        documents: (found ?? []) as KeywordMatch[],
+      });
     }
 
     let answer: string;
@@ -92,6 +118,7 @@ export async function POST(request: NextRequest) {
         title: doc.title,
         category: doc.category,
       })),
+      documents: [],
     });
   });
 }

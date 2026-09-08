@@ -9,7 +9,7 @@ import { CATEGORY_TAB_LABELS, type DocumentCategory } from "@/lib/categories";
 // 상단 검색칸(전체)과 나란히 있는 게 아니라 서로 다른 일을 한다.
 //   상단  = 어디 있는지 모를 때. 이게 이 위키를 만든 이유다.
 //   여기  = 수가 질문인 걸 아는 사람이 바로 좁혀 묻는 길.
-// 답은 같은 홈 화면에서 나온다 — 화면을 두 벌 만들지 않고 ?category= 만 붙인다.
+// 답은 이 탭 화면 위쪽에 그대로 나온다. 홈으로 튕겨 보내지 않는다.
 export default function CategorySearch({ category }: { category: DocumentCategory }) {
   const router = useRouter();
   const [value, setValue] = useState("");
@@ -18,7 +18,8 @@ export default function CategorySearch({ category }: { category: DocumentCategor
     event.preventDefault();
     const question = value.trim();
     if (!question) return;
-    router.push(`/?q=${encodeURIComponent(question)}&category=${category}`);
+    // 홈으로 보내지 않는다 — 탭 안에서 검색했으면 결과도 그 탭에서 봐야 한다.
+    router.push(`/categories/${category}?q=${encodeURIComponent(question)}`);
   }
 
   return (

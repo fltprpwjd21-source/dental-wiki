@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
@@ -5,6 +6,7 @@ import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { CATEGORY_LABELS, CATEGORY_SUB, type DocumentCategory } from "@/lib/categories";
 import { isRecentlyUpdated, makeSummary } from "@/lib/notices";
 import CategorySearch from "@/components/CategorySearch";
+import QaScreen from "@/components/QaScreen";
 
 const VALID_CATEGORIES = Object.keys(CATEGORY_LABELS) as DocumentCategory[];
 
@@ -30,8 +32,15 @@ export default async function CategoryPage({
     .order("updated_at", { ascending: false });
 
   return (
-    <main className="flex-1 bg-l-card">
-      <div className="mx-auto max-w-6xl px-4 py-5">
+    <main className="flex flex-1 flex-col bg-l-card">
+      {/* 이 탭 검색칸에서 온 ?q= 는 여기서 답한다. 홈으로 보내지 않는다 —
+          탭 안에서 검색했으면 결과도 그 탭에서 봐야 한다.
+          scope 를 넘기므로 이 안에서만 찾는다. */}
+      <Suspense>
+        <QaScreen scope={activeCategory} />
+      </Suspense>
+
+      <div className="mx-auto w-full max-w-6xl px-4 py-5">
         <div className="flex flex-wrap items-end gap-2.5 pb-3">
           <h1 className="font-display text-[23px] font-extrabold leading-tight tracking-tight text-ink">
             {CATEGORY_LABELS[activeCategory]}
