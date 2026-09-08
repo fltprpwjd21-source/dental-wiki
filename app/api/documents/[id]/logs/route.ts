@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/uuid";
+import { visibleDocumentLogs } from "@/lib/document-logs";
 
 // PLAN 10번: "수정 로그 보기"를 펼쳤을 때 보여줄 이력 조회
 export async function GET(
@@ -26,6 +27,7 @@ export async function GET(
       return NextResponse.json({ error: "로그를 불러오지 못했습니다." }, { status: 500 });
     }
 
-    return NextResponse.json({ logs });
+    // 무엇을 보여줄지의 규칙은 lib/document-logs.ts 에 있다 (그 파일의 주석 참고).
+    return NextResponse.json({ logs: visibleDocumentLogs(logs ?? []) });
   });
 }
