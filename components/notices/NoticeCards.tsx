@@ -10,6 +10,7 @@ export default function NoticeCards({
   unreadIds,
 }: {
   notices: Notice[];
+  /** 한 번도 열어보지 않은 공지 — 주황 점이 붙는다 */
   unreadIds: Set<string>;
 }) {
   if (notices.length === 0) {
@@ -70,9 +71,6 @@ export default function NoticeCards({
                 )}
 
                 <span className="relative mt-auto flex items-center gap-2">
-                  {notice.needs_ack && (
-                    <span className="text-[8.5px] tracking-wide text-white/45 md:text-[9px]">확인 필요</span>
-                  )}
                   {unreadIds.has(notice.id) && (
                     <span
                       aria-label="안 읽음"

@@ -2,17 +2,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
-import { CATEGORY_LABELS, type DocumentCategory } from "@/lib/categories";
+import { CATEGORY_LABELS, CATEGORY_SUB, type DocumentCategory } from "@/lib/categories";
 import { isRecentlyUpdated, makeSummary } from "@/lib/notices";
 
 const VALID_CATEGORIES = Object.keys(CATEGORY_LABELS) as DocumentCategory[];
 
-// 세 탭(인수인계·수가·비보험·내규)이 같은 화면 한 벌을 쓴다. 제목만 바뀐다.
-const CATEGORY_SUB: Record<DocumentCategory, string> = {
-  handover: "진료과별 업무 인수인계",
-  insurance: "보험 산정기준과 비보험 항목 단가",
-  policy: "병원 내규와 운영회칙",
-};
+// 네 탭(인수인계·회의록·수가·비보험·내규)이 같은 화면 한 벌을 쓴다. 제목만 바뀐다.
 
 export default async function CategoryPage({
   params,

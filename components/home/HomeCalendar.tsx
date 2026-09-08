@@ -1,23 +1,33 @@
+"use client";
+
 import Link from "next/link";
-import { NOTICE_DOT_DARK, NOTICE_LABELS, isoDate, type Notice } from "@/lib/notices";
+import { useState } from "react";
+import { NOTICE_LABELS, isoDate, type Notice } from "@/lib/notices";
 
 // 층 4 — 캘린더.
 //
 // 따로 입력하는 곳을 만들지 않는다. 공지에 날짜(event_on)가 있으면 그 날에 점이 찍힌다.
 // 입력을 두 번 시키면 한쪽은 반드시 비어 있게 된다.
+//
+// 점은 분류색이 아니라 전부 주황이다.
+//   달력에서 알아야 할 것은 "무슨 분류인가"가 아니라 "이 날 뭔가 있다"이고,
+//   분류색(파랑 계열)은 옅은 파랑 바탕과 오늘(남색) 위에서 잘 안 보인다.
+//   주황은 두 바탕 모두에서 튀고, 카드의 안 읽음 점과 같은 색이라 "봐야 할 것"으로 읽힌다.
+//
+// 오른쪽은 고른 날의 일정이다. 처음에는 오늘이 골라져 있고, 다른 날을 누르면 그 날로 바뀐다.
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 export default function HomeCalendar({ events }: { events: Notice[] }) {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  const todayIso = isoDate(today);
+  // 오늘을 렌더 중에 읽지 않는다 — 같은 렌더가 매번 다른 값을 내면 안 된다.
+  // 처음 한 번만 계산해 상태로 들고 간다.
+  const [today] = useState(() => isoDate(new Date()));
+  const [selected, setSelected] = useState(today);
 
-  const first = new Date(year, month, 1);
+  const [year, month] = [Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1];
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const leading = first.getDay();
+  const leading = new Date(year, month, 1).getDay();
 
-  // 날짜별로 어떤 분류의 점이 찍히는지 모은다 (같은 날 둘이면 점도 둘).
+  // 날짜별로 그 날의 공지를 모은다 (같은 날 둘이면 점도 둘).
   const byDate = new Map<string, Notice[]>();
   for (const notice of events) {
     if (!notice.event_on) continue;
@@ -31,11 +41,11 @@ export default function HomeCalendar({ events }: { events: Notice[] }) {
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ];
 
-  // 오늘 이후로 가장 가까운 일정 셋. 캘린더만 있으면 날짜를 눈으로 찾아야 한다.
-  const upcoming = events
-    .filter((n) => n.event_on && n.event_on >= todayIso)
-    .sort((a, b) => (a.event_on! < b.event_on! ? -1 : 1))
-    .slice(0, 3);
+  const picked = byDate.get(selected) ?? [];
+  const isToday = selected === today;
+  const heading = isToday
+    ? "오늘 일정"
+    : `${Number(selected.slice(5, 7))}월 ${Number(selected.slice(8, 10))}일 일정`;
 
   return (
     <section className="border-t border-hair bg-l-cal">
@@ -51,7 +61,9 @@ export default function HomeCalendar({ events }: { events: Notice[] }) {
             {WEEKDAYS.map((w, i) => (
               <div
                 key={w}
-                className={`pb-1 text-center text-[9.5px] tracking-wide ${i === 0 ? "text-[#b4544a]" : "text-ink-3"}`}
+                className={`pb-1 text-center text-[9.5px] tracking-wide ${
+                  i === 0 ? "text-[#b4544a]" : "text-ink-3"
+                }`}
               >
                 {w}
               </div>
@@ -61,21 +73,30 @@ export default function HomeCalendar({ events }: { events: Notice[] }) {
               if (day === null) return <div key={`pad-${i}`} aria-hidden />;
               const iso = isoDate(new Date(year, month, day));
               const dots = byDate.get(iso) ?? [];
-              const isToday = iso === todayIso;
+              const dayIsToday = iso === today;
+              const dayIsSelected = iso === selected;
               const isSunday = i % 7 === 0;
 
+              // 오늘은 남색, 고른 날은 그보다 한 단계 밝은 파랑.
+              // 둘 다인 날은 오늘 색이 이긴다 — 오늘이 어디인지가 먼저다.
+              const tone = dayIsToday
+                ? "bg-navy font-bold text-white"
+                : dayIsSelected
+                  ? "bg-[#3d74c0] font-medium text-white"
+                  : isSunday
+                    ? "text-[#b4544a] hover:bg-[#3d74c0] hover:text-white"
+                    : "text-[#2f3c52] hover:bg-[#3d74c0] hover:text-white";
+
               return (
-                <div
+                <button
                   key={iso}
-                  className={`relative flex min-h-[30px] flex-col items-center justify-center gap-[3px] text-[11px] tabular-nums transition-colors md:min-h-[33px] md:text-[11.5px] ${
-                    isToday
-                      ? "bg-navy font-bold text-white"
-                      : isSunday
-                        ? "text-[#b4544a] hover:bg-white"
-                        : "text-[#2f3c52] hover:bg-white"
-                  }`}
+                  type="button"
+                  onClick={() => setSelected(iso)}
+                  aria-pressed={dayIsSelected}
+                  aria-label={`${month + 1}월 ${day}일${dots.length > 0 ? ` · 일정 ${dots.length}건` : ""}`}
+                  className={`relative flex min-h-[30px] flex-col items-center justify-center gap-[3px] text-[11px] tabular-nums transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-navy md:min-h-[33px] md:text-[11.5px] ${tone}`}
                 >
-                  {isToday && (
+                  {dayIsToday && (
                     <span aria-hidden className="animate-ring absolute inset-0 border border-navy" />
                   )}
                   <span className="relative">{day}</span>
@@ -83,41 +104,52 @@ export default function HomeCalendar({ events }: { events: Notice[] }) {
                     {dots.slice(0, 3).map((n) => (
                       <span
                         key={n.id}
-                        title={n.title}
-                        className={`h-1 w-1 rounded-full ${isToday ? "ring-1 ring-white/85" : ""}`}
-                        style={{ background: NOTICE_DOT_DARK[n.category] }}
+                        className={`h-1 w-1 rounded-full bg-amber ${
+                          dayIsToday || dayIsSelected ? "ring-1 ring-white/85" : ""
+                        }`}
                       />
                     ))}
                   </span>
-                </div>
+                </button>
               );
             })}
           </div>
         </div>
 
         <div>
-          <h3 className="mb-1.5 font-display text-[13px] font-bold text-ink">다가오는 일정</h3>
-          {upcoming.length === 0 ? (
+          <div className="mb-1.5 flex items-baseline gap-2">
+            <h3 className="font-display text-[13px] font-bold text-ink">{heading}</h3>
+            {!isToday && (
+              <button
+                type="button"
+                onClick={() => setSelected(today)}
+                className="ml-auto text-[10.5px] text-meet-d underline-offset-2 hover:underline"
+              >
+                오늘로
+              </button>
+            )}
+          </div>
+
+          {picked.length === 0 ? (
             <p className="border-t border-hair pt-2 text-[11.5px] text-ink-2">
-              등록된 일정이 없습니다.
+              {isToday ? "오늘은 일정이 없습니다." : "이 날은 일정이 없습니다."}
             </p>
           ) : (
             <ul>
-              {upcoming.map((n) => (
+              {picked.map((n) => (
                 <li key={n.id} className="border-t border-hair">
                   <Link
                     href={`/notices/${n.id}`}
-                    className="grid grid-cols-[54px_1fr] items-baseline gap-2.5 py-2 text-xs hover:bg-white"
+                    className="block py-2 text-xs leading-snug text-ink hover:bg-white"
                   >
-                    <span className="font-mono text-[11px] text-ink-2">
-                      {n.event_on!.slice(5)}
-                    </span>
-                    <span className="leading-snug text-ink">
-                      {n.title}
-                      <em className="mt-0.5 block text-[10.5px] font-light not-italic text-ink-2">
-                        {NOTICE_LABELS[n.category]}
-                      </em>
-                    </span>
+                    <span
+                      aria-hidden
+                      className="mr-1.5 inline-block h-1 w-1 rounded-full bg-amber align-middle"
+                    />
+                    {n.title}
+                    <em className="mt-0.5 block text-[10.5px] font-light not-italic text-ink-2">
+                      {NOTICE_LABELS[n.category]}
+                    </em>
                   </Link>
                 </li>
               ))}

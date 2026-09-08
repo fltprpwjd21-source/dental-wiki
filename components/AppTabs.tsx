@@ -11,6 +11,7 @@ const TABS = [
   { href: "/", label: "홈" },
   { href: "/notices", label: "공지" },
   { href: "/categories/handover", label: "인수인계" },
+  { href: "/categories/meeting", label: "회의록" },
   { href: "/categories/insurance", label: "수가·비보험" },
   { href: "/categories/policy", label: "내규" },
   { href: "/notes", label: "보관함" },

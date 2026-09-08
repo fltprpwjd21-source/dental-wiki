@@ -61,10 +61,15 @@ export default async function NoticePage({
   await markNoticeRead(notice.id, session.employeeId);
 
   const canEdit = notice.author_id === session.employeeId || session.isAdmin;
-  const { count: readCount } = await supabase
-    .from("notice_reads")
-    .select("employee_id", { count: "exact", head: true })
-    .eq("notice_id", notice.id);
+
+  // 읽은 사람 수 / 전체 인원. 방금 이 요청에서 남긴 내 기록도 포함된다.
+  const [{ count: readCount }, { count: staffCount }] = await Promise.all([
+    supabase
+      .from("notice_reads")
+      .select("employee_id", { count: "exact", head: true })
+      .eq("notice_id", notice.id),
+    supabase.from("employee_whitelist").select("employee_id", { count: "exact", head: true }),
+  ]);
 
   return (
     <main className="flex flex-1 flex-col">
@@ -137,7 +142,7 @@ export default async function NoticePage({
       </div>
 
       {notice.needs_ack && (
-        <NoticeAck id={notice.id} readCount={readCount ?? 0} />
+        <NoticeAck readCount={readCount ?? 0} staffCount={staffCount ?? 0} />
       )}
     </main>
   );

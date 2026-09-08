@@ -192,7 +192,7 @@ export default function NoticeForm({
           onChange={(e) => setNeedsAck(e.target.checked)}
           className="accent-[#0c1c40]"
         />
-        읽음 확인을 받습니다 — 켠 공지에만 확인 버튼이 뜹니다
+        읽은 사람을 집계합니다 — 공지를 연 사람이 몇 명인지 아래에 표시됩니다
       </label>
 
       {error && (

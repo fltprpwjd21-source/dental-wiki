@@ -111,6 +111,16 @@ body {
   font-family: var(--font-nanum-myeongjo), serif;
 }
 
+/* 한글은 기본값(word-break: normal)에서 음절 아무 데서나 줄이 바뀐다.
+   그래서 좁은 카드에서 "소독"이 "소 / 독"으로, "지침"이 "지 / 침"으로 잘렸다.
+   keep-all 로 단어를 붙여 두고, 한 단어가 칸보다 길 때만 어쩔 수 없이 자른다. */
+h1, h2, h3, h4, h5, h6,
+.font-display,
+.break-keep-ko {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
 /* 움직임을 원치 않는 사람에게는 전부 끈다 (어지럼증은 접근성 문제다) */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

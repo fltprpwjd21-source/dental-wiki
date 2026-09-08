@@ -19,6 +19,7 @@ type Mode = "ambient" | "explorer";
 // 바꿀 때 캔버스만 따로 남아 어긋나는 일이 없게 하려는 것이다.
 const CATEGORY_COLOR: Record<DocumentCategory, string> = {
   handover: "#c2701c",
+  meeting: "#2b66b2",
   insurance: "#0f9b7a",
   policy: "#6d55d0",
 };

@@ -9,12 +9,15 @@ import type { DocumentCategory } from "@/lib/categories";
 export type HomeData = {
   cards: Notice[];
   events: Notice[];
+  /** 한 번도 열어보지 않은 공지 — 카드의 주황 점 */
   unreadIds: Set<string>;
   documents: { id: string; title: string; category: DocumentCategory; updated_at: string }[];
 };
 
 export async function getHomeData(employeeId: string): Promise<HomeData> {
-  const empty: HomeData = { cards: [], events: [], unreadIds: new Set(), documents: [] };
+  const empty: HomeData = {
+    cards: [], events: [], unreadIds: new Set(), documents: [],
+  };
 
   try {
     const supabase = getServerSupabaseClient();
@@ -56,14 +59,14 @@ export async function getHomeData(employeeId: string): Promise<HomeData> {
       if (result.error) console.error(`[home] ${name} 조회 실패`, result.error);
     }
 
-    const readSet = new Set((reads.data ?? []).map((r) => r.notice_id as string));
+    // 공지를 한 번이라도 연 사람은 읽은 것으로 친다.
+    const openedSet = new Set((reads.data ?? []).map((r) => r.notice_id as string));
     const cards = (live.data ?? []) as Notice[];
 
     return {
       cards,
       events: (events.data ?? []) as Notice[],
-      // "안 읽음"은 읽음 기록이 없는 것. 확인 버튼을 누르지 않아도 열어보면 기록된다.
-      unreadIds: new Set(cards.filter((n) => !readSet.has(n.id)).map((n) => n.id)),
+      unreadIds: new Set(cards.filter((n) => !openedSet.has(n.id)).map((n) => n.id)),
       documents: (documents.data ?? []) as HomeData["documents"],
     };
   } catch (error) {
@@ -72,7 +75,10 @@ export async function getHomeData(employeeId: string): Promise<HomeData> {
   }
 }
 
-// 공지를 열어본 것만으로 읽음으로 친다.
+// 공지를 열어본 것만으로 "읽음"으로 친다 (카드의 주황 점이 사라진다).
+// 「읽음 확인」을 눌렀는지(acked_at)는 건드리지 않는다 — ignoreDuplicates 라
+// 이미 있는 줄은 그대로 둔다.
+//
 // 실패해도 화면을 막지 않는다 — 읽음 기록이 안 남는 것보다 공지가 안 열리는 게 나쁘다.
 export async function markNoticeRead(noticeId: string, employeeId: string): Promise<void> {
   try {

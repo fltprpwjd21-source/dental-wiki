@@ -27,6 +27,11 @@ export async function GET(
       .from("node_logs")
       .select("id, action, actor, detail, created_at")
       .eq("node_id", id)
+      // 만든 기록은 빼고 보여준다.
+      //   이건 "수정 기록"이고, 갓 만든 노트에 "노트 만듦" 한 줄만 떠 있는 것은
+      //   알려주는 게 없다. 만든 사람·시각은 노트 자체(created_by·created_at)에
+      //   이미 남아 있으므로 기록이 사라지는 것도 아니다.
+      .not("action", "in", "(create_note,create_folder)")
       .order("created_at", { ascending: false });
 
     if (error) {
