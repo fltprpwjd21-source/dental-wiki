@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { createDownloadUrl } from "@/lib/file-storage";
+import { isPreviewableMimeType } from "@/lib/file-rules";
 import { isUuid } from "@/lib/uuid";
 
 // 비공개 버킷의 첨부파일(사진·PDF)을 <img src>·<iframe src>·다운로드 링크로 쓸 수 있게
@@ -68,8 +69,14 @@ export async function GET(
       // (default-src 나 sandbox 로 넓게 막으면 PDF 뷰어까지 막힌다 — 위 주석 참고)
       "Content-Security-Policy":
         "script-src 'none'; object-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'",
+      // 브라우저가 그릴 수 있는 형식만 inline 으로 띄운다. pptx 처럼 뷰어가 없는 형식을
+      // inline 으로 주면 새 창이 빈 화면으로 열려 "안 열린다"는 신고가 들어온다 —
+      // 그런 형식은 처음부터 내려받게 한다. (판단 기준은 lib/file-rules.ts 한 곳에 둔다)
+      //
       // 파일명은 화면 표시용이다. 헤더에 그대로 넣으면 한글·따옴표에서 깨지므로 인코딩한다.
-      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(node.name)}`,
+      "Content-Disposition": `${
+        isPreviewableMimeType(contentType) ? "inline" : "attachment"
+      }; filename*=UTF-8''${encodeURIComponent(node.name)}`,
       // 서명 URL이 60초짜리라 오래 캐싱하면 안 되고, 로그인 사용자별 응답이라 private 이다.
       "Cache-Control": "private, max-age=60",
     });

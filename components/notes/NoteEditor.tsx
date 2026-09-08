@@ -5,7 +5,7 @@ import Link from "next/link";
 import MarkdownView from "@/components/notes/MarkdownView";
 import NoteLogSection from "@/components/notes/NoteLogSection";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
-import { ACCEPT_ATTRIBUTE } from "@/lib/file-rules";
+import { ACCEPT_ATTRIBUTE, isPreviewableMimeType } from "@/lib/file-rules";
 import type { FlatNode } from "@/lib/notes/tree";
 
 type NoteDetail = {
@@ -24,6 +24,14 @@ function formatSize(bytes: number): string {
 
 function isImage(mimeType: string | null): boolean {
   return !!mimeType && mimeType.startsWith("image/");
+}
+
+// 첨부 아이콘. 눌러보기 전에 "새 창에서 열리는지 내려받아지는지"를 알 수 있어야 한다 —
+// 예전에는 사진이 아니면 전부 📄 라서 pptx 를 눌렀다가 빈 창을 보게 됐다.
+function attachmentIcon(mimeType: string | null): string {
+  if (isImage(mimeType)) return "🖼";
+  if (isPreviewableMimeType(mimeType)) return "📄";
+  return "📊";
 }
 
 // Design §4.2·§5: 노트 보기/편집 — 저장은 문서 편집과 동일한 낙관적 잠금 패턴.
@@ -217,8 +225,13 @@ export default function NoteEditor({
 
       // 사진이면 바로 보이는 마크다운 이미지로, 그 외(PDF 등)는 클릭해서 여는
       // 링크로 커서 위치에 끼워 넣는다. 첨부 자체는 아래 "첨부파일" 목록에도 남는다.
+      // 미리보기가 없는 형식(pptx)은 눌렀을 때 내려받아지므로 링크 글에 그렇게 적는다.
       const url = `/api/notes/${urlData.attachmentId}/content`;
-      const markdown = isImage(file.type) ? `![${file.name}](${url})` : `[📎 ${file.name}](${url})`;
+      const markdown = isImage(file.type)
+        ? `![${file.name}](${url})`
+        : isPreviewableMimeType(file.type)
+          ? `[📎 ${file.name}](${url})`
+          : `[📊 ${file.name} (내려받기)](${url})`;
       const textarea = textareaRef.current;
       if (textarea) {
         const start = textarea.selectionStart;
@@ -387,12 +400,17 @@ export default function NoteEditor({
                 >
                   <a
                     href={`/api/notes/${attachment.id}/content`}
-                    target="_blank"
+                    // 미리보기가 되는 것만 새 창으로 연다. 내려받기 전용 형식에 target 을
+                    // 붙이면 빈 탭이 열렸다 곧바로 닫혀 깜빡이기만 한다.
+                    target={isPreviewableMimeType(attachment.mime_type) ? "_blank" : undefined}
                     rel="noreferrer"
                     className="flex min-w-0 flex-1 items-center gap-1 truncate text-accent hover:underline"
                   >
-                    <span>{isImage(attachment.mime_type) ? "🖼" : "📄"}</span>
+                    <span>{attachmentIcon(attachment.mime_type)}</span>
                     <span className="truncate">{attachment.name}</span>
+                    {!isPreviewableMimeType(attachment.mime_type) && (
+                      <span className="shrink-0 text-gray-400">내려받기</span>
+                    )}
                     <span className="shrink-0 text-gray-400">
                       {attachment.size_bytes !== null ? formatSize(attachment.size_bytes) : ""}
                     </span>

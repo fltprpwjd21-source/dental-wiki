@@ -6,7 +6,11 @@
 //   가 서명 URL로 열어주므로 스토리지 도메인에서 스크립트가 실행될 수 있었다.
 //   허용 목록은 빠뜨렸을 때의 결과가 '보안 구멍'이 아니라 '이 형식이 안 올라감'이라
 //   사용자 신고로 반드시 드러난다 — 실패해도 안전한 쪽으로 기운다.
-const ALLOWED_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "pdf"];
+// 2026-09-08: pptx 추가. 발표자료를 보관함에 올리고 싶다는 요구에서 나왔다.
+//   구형 .ppt 와 매크로를 품을 수 있는 .pptm 은 일부러 넣지 않는다 — 이 목록을
+//   허용 방식으로 만든 이유가 "빠뜨렸을 때 보안 구멍이 아니라 안 올라감으로 드러난다"
+//   이므로, 꼭 필요한 하나만 늘린다.
+const ALLOWED_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "pdf", "pptx"];
 
 // 확장자는 파일 이름의 일부일 뿐이라 내용과 무관하다(virus.exe → photo.png 로 바꾸면 통과).
 // mimeType 도 클라이언트가 보내는 값이라 그 자체로는 증거가 못 되지만, 두 값이 서로
@@ -17,13 +21,43 @@ const ALLOWED_MIME_TYPES = [
   "image/gif",
   "image/webp",
   "application/pdf",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ];
+
+// 브라우저가 화면에 그려줄 수 있는 형식. 사진은 <img>, PDF 는 브라우저 내장 뷰어가 연다.
+//
+// pptx 는 여기에 들어가지 않는다 — 브라우저에 파워포인트 뷰어가 없어서, 새 창으로 열면
+// 빈 화면이 뜨거나 그냥 내려받아진다. 온라인 뷰어(오피스·구글)에 맡기는 길도 있지만
+// 그러려면 파일이 인터넷에 공개돼 있어야 해서(그쪽 서버가 직접 가져간다) 쓰지 않는다.
+// 미리보기가 필요하면 PDF 로 내보내 함께 올리고, pptx 는 고칠 때 쓰는 원본으로 둔다.
+const PREVIEWABLE_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+];
+
+// 미리보기가 되는 형식인가. 안 되는 형식은 새 창에 띄우지 말고 내려받게 해야 한다
+// (app/api/notes/[id]/content 의 Content-Disposition 참고).
+export function isPreviewableMimeType(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return false;
+  return PREVIEWABLE_MIME_TYPES.includes(mimeType.split(";")[0].trim().toLowerCase());
+}
 
 // 화면의 <input accept>에 그대로 쓴다 — 파일 선택창 필터와 서버 규칙이 어긋나지 않게
 // 한 곳에서 관리한다. (accept 는 강제력이 없는 편의 기능이고, 강제는 서버가 한다)
 export const ACCEPT_ATTRIBUTE = ALLOWED_MIME_TYPES.join(",");
 
-export const FILE_MAX_SIZE_MB = Number(process.env.FILE_MAX_SIZE_MB ?? "50");
+// 50MB → 100MB (2026-09-08). 발표자료(PPT를 PDF로 내보낸 것)처럼 사진이 많이 들어간
+// 자료가 50MB를 넘기는 일이 생겨 올렸다. 무한정 올리지 않는 이유는 저장공간보다
+// **전송량**이 먼저 바닥나기 때문이다 — 첨부는 /api/notes/{id}/content 가 바이트를 그대로
+// 흘려보내는 구조라, 한 번 열 때마다 Supabase 와 Vercel 양쪽에서 파일 크기만큼 전송량이
+// 발생한다(캐시는 60초짜리다). 큰 원본은 앱에 올리는 대신 링크로 두는 쪽이 맞다.
+//
+// 주의: 이 값을 바꾸면 스토리지 버킷의 file_size_limit 도 같이 올려야 한다.
+// 앱만 고치면 업로드가 스토리지 단계에서 거부된다 (supabase/migrations 의 storage_bucket 참고).
+export const FILE_MAX_SIZE_MB = Number(process.env.FILE_MAX_SIZE_MB ?? "100");
 export const FILE_MAX_SIZE_BYTES = FILE_MAX_SIZE_MB * 1024 * 1024;
 
 // 휴지통 항목은 이 기간이 지나면 크론이 자동으로 완전 삭제한다.
