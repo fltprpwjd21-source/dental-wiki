@@ -52,3 +52,47 @@ export const LABWORK_LOAD_MESSAGE: Record<
   columns: "시트 열 구성이 바뀐 것 같습니다. 첫 줄의 열 이름을 확인해주세요.",
   unreachable: "기공물 시트를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
 };
+
+// ── 시제품(우리 DB 저장) 쪽 타입 ──────────────────────────────────────
+//
+// 위쪽 LabworkItem 은 "시트를 읽어 보여주는" 화면이 쓰는 타입이고,
+// 아래는 "표에 직접 입력하는" 시제품이 쓰는 타입이다. 지금은 둘이 따로 있다 —
+// 원본을 어디에 둘지가 아직 정해지지 않았기 때문이다(NAS 이전 후 판단).
+// 하나로 합치는 것은 그 결정이 난 뒤에 한다. 미리 합치면 안 쓰는 필드가 생긴다.
+
+/** 표 한 줄에서 사람이 고칠 수 있는 칸들. 실제 시트 13열 중 11열이다.
+ *  등록번호·환자명은 없다 — 환자를 특정하는 값이라 외부 클라우드에 저장하지 않는다. */
+export type LabworkDraft = {
+  lab: string;          // 기공소 (A)
+  ordered_on: string;   // 의뢰 (C) — YYYY-MM-DD, 빈 문자열 허용
+  doctor: string;       // 의사 (E)
+  kind: string;         // 보철물 (F)
+  tooth: string;        // 치식 (G) — "16", "14,15,16" 처럼 여러 개일 수 있어 글자다
+  tooth_count: string;  // 치아개수 (H) — 화면에서는 글자로 다루고 저장할 때 숫자로 바꾼다
+  ab_count: string;     // AB개수 (I)
+  due_on: string;       // 예정일 (J)
+  note: string;         // 기타사항 (K)
+  arrived: boolean;     // 도착일(L)이 찍혔는지
+  extra: string;        // M열 — 헤더 이름 확인 후 바꾼다
+};
+
+export type LabworkRecord = LabworkDraft & {
+  id: string;
+  seq: number;
+  arrived_on: string | null;
+  updated_at: string;
+};
+
+export const EMPTY_DRAFT: LabworkDraft = {
+  lab: "",
+  ordered_on: "",
+  doctor: "",
+  kind: "",
+  tooth: "",
+  tooth_count: "",
+  ab_count: "",
+  due_on: "",
+  note: "",
+  arrived: false,
+  extra: "",
+};
