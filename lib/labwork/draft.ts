@@ -2,7 +2,7 @@ import { EMPTY_DRAFT, type LabworkDraft } from "./types";
 import { parseLooseDate } from "./date";
 
 export const LABWORK_SELECT =
-  "id, seq, lab, ordered_on, doctor, kind, tooth, tooth_count, ab_count, due_on, note, arrived, arrived_on, extra, updated_at";
+  "id, seq, scope, lab, ordered_on, doctor, kind, tooth, tooth_count, ab_count, due_on, note, arrived, arrived_on, oral_scan, updated_at";
 
 // 화면이 보낸 값을 그대로 믿지 않는다. 표에 직접 치는 화면이라 무엇이든 들어온다.
 //
@@ -17,6 +17,11 @@ export function cleanDraft(body: unknown): Record<string, unknown> {
   for (const key of Object.keys(EMPTY_DRAFT) as (keyof LabworkDraft)[]) {
     if (!(key in raw)) continue;
     const value = raw[key];
+
+    if (key === "oral_scan") {
+      out.oral_scan = value === true;
+      continue;
+    }
 
     if (key === "arrived") {
       out.arrived = value === true;

@@ -73,8 +73,16 @@ export type LabworkDraft = {
   due_on: string;       // 예정일 (J)
   note: string;         // 기타사항 (K)
   arrived: boolean;     // 도착일(L)이 찍혔는지
-  extra: string;        // M열 — 헤더 이름 확인 후 바꾼다
+  oral_scan: boolean;   // M열 — 구강스캔인 경우에만 체크한다
 };
+
+/** 어느 시트인지. 구조가 같아 한 표에 담고 화면에서 탭으로 나눈다. */
+export type LabworkScope = "external" | "internal";
+
+export const LABWORK_SCOPES: { key: LabworkScope; label: string; hint: string }[] = [
+  { key: "external", label: "외부", hint: "기공소로 나가는 시트" },
+  { key: "internal", label: "내부", hint: "병원 내부용 시트" },
+];
 
 export type LabworkRecord = LabworkDraft & {
   id: string;
@@ -94,5 +102,5 @@ export const EMPTY_DRAFT: LabworkDraft = {
   due_on: "",
   note: "",
   arrived: false,
-  extra: "",
+  oral_scan: false,
 };

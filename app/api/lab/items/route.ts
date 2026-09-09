@@ -1,20 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
-import { EMPTY_DRAFT } from "@/lib/labwork/types";
+import { EMPTY_DRAFT, type LabworkScope } from "@/lib/labwork/types";
 import { cleanDraft, LABWORK_SELECT } from "@/lib/labwork/draft";
 
 // 기공물 장부 시제품 — 목록 조회와 새 줄 추가.
 //
+// 시트가 둘이다(외부·내부). 구조가 같아 한 표에 담고 scope 로 가른다.
+
+function isScope(value: string): value is LabworkScope {
+  return value === "external" || value === "internal";
+}
+//
 // 저장은 우리 DB(labwork_items)다. 환자 이름·차트번호 열은 없다
 // (20260910130000 마이그레이션 주석 참고).
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   return withSession(async () => {
+    // 시트를 안 정하면 외부시트를 본다. 모르는 값이 오면 400 으로 막는다 —
+    // 조용히 한쪽으로 떨어지면 "내부시트를 봤는데 외부 줄이 나왔다"를 아무도 모른다.
+    const scope = request.nextUrl.searchParams.get("scope") ?? "external";
+    if (!isScope(scope)) {
+      return NextResponse.json({ error: "없는 시트입니다." }, { status: 400 });
+    }
+
     const supabase = getServerSupabaseClient();
     const { data, error } = await supabase
       .from("labwork_items")
       .select(LABWORK_SELECT)
+      .eq("scope", scope)
       // 넣은 순서 그대로 둔다. 날짜로 다시 줄 세우면 방금 친 줄이 눈앞에서 사라진다.
       .order("seq", { ascending: true });
 
@@ -30,6 +44,10 @@ export async function POST(request: NextRequest) {
   return withSession(async (session) => {
     const body = await request.json().catch(() => null);
     // 여러 줄을 한 번에 받는다 — 엑셀에서 붙여넣으면 줄이 한꺼번에 들어온다.
+    const scope = typeof body?.scope === "string" ? body.scope : "external";
+    if (!isScope(scope)) {
+      return NextResponse.json({ error: "없는 시트입니다." }, { status: 400 });
+    }
     const drafts: unknown[] = Array.isArray(body?.rows) ? body.rows : [body?.row ?? {}];
     if (drafts.length === 0 || drafts.length > 500) {
       return NextResponse.json({ error: "한 번에 500줄까지 넣을 수 있습니다." }, { status: 400 });
@@ -42,6 +60,7 @@ export async function POST(request: NextRequest) {
         drafts.map((draft) => ({
           ...EMPTY_DRAFT,
           ...cleanDraft(draft),
+          scope,
           arrived_on: null,
           created_by: session.employeeId,
           updated_by: session.employeeId,

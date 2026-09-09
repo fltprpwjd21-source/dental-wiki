@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LABWORK_COLUMNS, parsePastedGrid } from "@/lib/labwork/columns";
-import { EMPTY_DRAFT, type LabworkDraft, type LabworkRecord } from "@/lib/labwork/types";
+import {
+  EMPTY_DRAFT,
+  type LabworkDraft,
+  type LabworkRecord,
+  type LabworkScope,
+} from "@/lib/labwork/types";
 import { formatDate } from "@/lib/labwork/date";
 
 // 엑셀처럼 칸에 바로 치는 표.
@@ -21,7 +26,13 @@ import { formatDate } from "@/lib/labwork/date";
 
 type Cell = { row: number; col: number };
 
-export default function LabworkGrid({ initial }: { initial: LabworkRecord[] }) {
+export default function LabworkGrid({
+  initial,
+  scope,
+}: {
+  initial: LabworkRecord[];
+  scope: LabworkScope;
+}) {
   const [rows, setRows] = useState<LabworkRecord[]>(initial);
   const [active, setActive] = useState<Cell | null>(null);
   const [saving, setSaving] = useState<Set<string>>(new Set());
@@ -81,7 +92,7 @@ export default function LabworkGrid({ initial }: { initial: LabworkRecord[] }) {
       const res = await fetch("/api/lab/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: drafts.map((d) => ({ ...EMPTY_DRAFT, ...d })) }),
+        body: JSON.stringify({ scope, rows: drafts.map((d) => ({ ...EMPTY_DRAFT, ...d })) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "줄을 추가하지 못했습니다.");
@@ -91,7 +102,7 @@ export default function LabworkGrid({ initial }: { initial: LabworkRecord[] }) {
       setError(e instanceof Error ? e.message : "줄을 추가하지 못했습니다.");
       return [];
     }
-  }, []);
+  }, [scope]);
 
   const removeRow = useCallback(async (row: LabworkRecord) => {
     if (!confirm("이 줄을 지울까요? 되돌릴 수 없습니다.")) return;
@@ -138,52 +149,55 @@ export default function LabworkGrid({ initial }: { initial: LabworkRecord[] }) {
 
   // 표 안에서 키보드로만 돌아다닐 수 있어야 한다. 손이 마우스로 가면 표가 아니다.
   //
-  // 옮기기 전에 반드시 먼저 저장한다.
+  // preventDefault() 를 맨 먼저, await 앞에서 부른다
+  //   await 를 한 번이라도 지나면 브라우저는 이미 기본 동작을 끝낸 뒤다.
+  //   그래서 Tab 이 다음 칸이 아니라 주소창으로 넘어갔다 — 실제로 그렇게 동작했다.
+  //   currentTarget 도 같은 이유로 먼저 읽어 둔다(핸들러가 끝나면 비워진다).
+  //
+  // 옮기기 전에 반드시 먼저 저장한다
   //   칸을 옮기면 그 자리의 input 이 화면에서 사라지는데, 사라진 요소의 onBlur 는
-  //   React 에서 불리지 않는다. 저장을 onBlur 에만 맡기면 Tab 으로 넘어갈 때마다
-  //   방금 친 값이 조용히 버려진다 — 실제로 그렇게 동작했고 테스트에서 잡았다.
+  //   React 가 부르지 않는다. 저장을 onBlur 에만 맡기면 Tab 으로 넘어갈 때마다
+  //   방금 친 값이 조용히 버려진다.
   const handleKeyDown = useCallback(
     async (event: React.KeyboardEvent<HTMLInputElement>, at: Cell) => {
-      const lastCol = LABWORK_COLUMNS.length - 1;
-      const moving = event.key === "Tab" || event.key === "Enter";
+      const key = event.key;
+      if (key !== "Tab" && key !== "Enter" && key !== "Escape") return;
 
-      if (moving) {
-        const column = LABWORK_COLUMNS[at.col];
-        const row = rows[at.row];
-        if (column && row) await saveCell(row, column.key, event.currentTarget.value);
-      }
+      event.preventDefault();
+      const typed = event.currentTarget.value;
+      const shiftHeld = event.shiftKey;
 
-      if (event.key === "Tab") {
-        event.preventDefault();
-        const back = event.shiftKey;
-        let { row, col } = at;
-        col += back ? -1 : 1;
-        if (col > lastCol) { col = 0; row += 1; }
-        if (col < 0) { col = lastCol; row -= 1; }
-        if (row < 0) return;
-        if (row >= rows.length) {
-          const made = await addRows([{}]);
-          if (made.length === 0) return;
-        }
-        setActive({ row, col });
-        return;
-      }
-
-      if (event.key === "Enter") {
-        event.preventDefault();
-        // 마지막 줄에서 Enter 를 누르면 줄이 새로 생긴다 — 엑셀에서 하던 그대로다.
-        if (at.row + 1 >= rows.length) {
-          const made = await addRows([{}]);
-          if (made.length === 0) return;
-        }
-        setActive({ row: at.row + 1, col: at.col });
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
+      if (key === "Escape") {
         setActive(null);
+        return;
       }
+
+      const column = LABWORK_COLUMNS[at.col];
+      const row = rows[at.row];
+      if (column && row && column.kind !== "check") {
+        await saveCell(row, column.key, typed);
+      }
+
+      const lastCol = LABWORK_COLUMNS.length - 1;
+      let next: Cell;
+
+      if (key === "Tab") {
+        let { row: r, col: c } = at;
+        c += shiftHeld ? -1 : 1;
+        if (c > lastCol) { c = 0; r += 1; }
+        if (c < 0) { c = lastCol; r -= 1; }
+        if (r < 0) return;
+        next = { row: r, col: c };
+      } else {
+        // 마지막 줄에서 Enter 를 누르면 줄이 새로 생긴다 — 엑셀에서 하던 그대로다.
+        next = { row: at.row + 1, col: at.col };
+      }
+
+      if (next.row >= rows.length) {
+        const made = await addRows([{}]);
+        if (made.length === 0) return;
+      }
+      setActive(next);
     },
     [rows, addRows, saveCell],
   );
@@ -251,11 +265,16 @@ export default function LabworkGrid({ initial }: { initial: LabworkRecord[] }) {
                     } ${here ? "ring-2 ring-inset ring-navy" : ""}`}
                   >
                     {col.kind === "check" ? (
+                      // 체크 칸도 Tab 으로 지나갈 수 있어야 한다.
+                      // 빼놓으면 여기서 표 밖(주소창)으로 빠져나간다.
                       <label className="flex h-full cursor-pointer items-center justify-center py-1.5">
                         <input
+                          ref={here ? inputRef : undefined}
                           type="checkbox"
                           checked={value === true}
+                          onFocus={() => setActive({ row: rowIndex, col: colIndex })}
                           onChange={(e) => saveCell(row, col.key, e.target.checked)}
+                          onKeyDown={(e) => handleKeyDown(e, { row: rowIndex, col: colIndex })}
                           aria-label={`${rowIndex + 1}번째 줄 ${col.label}`}
                           className="h-3.5 w-3.5 accent-[color:var(--done)]"
                         />
