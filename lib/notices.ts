@@ -1,7 +1,8 @@
 // 공지 분류. 색은 globals.css 의 토큰과 짝을 이룬다.
 //
 // 「필독」은 없앴다. 분류 하나를 통째로 쓰기엔 남발될 위험이 크고, 실제로 필요한 건
-// "이 공지는 읽음 확인을 받겠다"는 스위치 하나였다 (notices.needs_ack).
+// "이 공지는 읽은 사람을 세겠다"는 스위치 하나였다 (notices.needs_ack).
+// 그 스위치는 화면에 「읽은 사람 N명」 띠를 띄울 뿐, 누르는 확인 절차는 없다.
 export type NoticeCategory = "sched" | "meet" | "rule";
 
 export const NOTICE_CATEGORIES: NoticeCategory[] = ["sched", "meet", "rule"];

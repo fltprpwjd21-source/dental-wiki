@@ -76,8 +76,9 @@ export async function getHomeData(employeeId: string): Promise<HomeData> {
 }
 
 // 공지를 열어본 것만으로 "읽음"으로 친다 (카드의 주황 점이 사라진다).
-// 「읽음 확인」을 눌렀는지(acked_at)는 건드리지 않는다 — ignoreDuplicates 라
-// 이미 있는 줄은 그대로 둔다.
+// 읽음을 남기는 길은 이것 하나뿐이다 — 따로 누르는 「읽음 확인」 버튼은 없다
+// (2026-09-09: acked_at 컬럼과 그 라우트를 걷어냈다). ignoreDuplicates 라
+// 이미 읽은 사람의 줄은 그대로 둔다.
 //
 // 실패해도 화면을 막지 않는다 — 읽음 기록이 안 남는 것보다 공지가 안 열리는 게 나쁘다.
 export async function markNoticeRead(noticeId: string, employeeId: string): Promise<void> {

@@ -57,7 +57,8 @@ export default async function NoticePage({
     }
   }
 
-  // 열어본 것만으로 읽음으로 친다. 확인 버튼은 needs_ack 를 켠 공지에만 따로 붙는다.
+  // 열어본 것만으로 읽음으로 친다 — 따로 누르는 버튼은 없다.
+  // needs_ack 는 아래 「읽은 사람 N명」 띠를 띄울지 정하는 스위치일 뿐이다.
   await markNoticeRead(notice.id, session.employeeId);
 
   const canEdit = notice.author_id === session.employeeId || session.isAdmin;
