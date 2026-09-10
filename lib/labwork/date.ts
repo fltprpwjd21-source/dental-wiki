@@ -13,6 +13,11 @@
 const PATTERNS: RegExp[] = [
   /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/,        // 2026-09-08, 2026.9.8
   /^(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일?$/,      // 2026년 9월 8일
+  // 화면이 보여주는 모양(formatDate) 그대로 다시 읽을 수 있어야 한다.
+  //   칸을 열면 "2025. 12/31" 이 입력칸에 들어가는데, 이걸 못 읽으면
+  //   아무것도 안 고치고 딴 데를 눌렀을 뿐인데 날짜가 지워진다.
+  //   tests/unit/labwork-date.test.mts 의 왕복 검사가 이 짝을 지킨다.
+  /^(\d{4})\.\s*(\d{1,2})[-./](\d{1,2})$/,       // 2025. 12/31
 ];
 
 const SHORT: RegExp[] = [
@@ -55,10 +60,21 @@ export function parseLooseDate(input: string, today: Date = new Date()): string 
   return thisYear;
 }
 
-// 화면에 보여줄 모양. 올해면 연도를 빼서 짧게 둔다 — 표에서는 한 칸이라도 좁은 게 낫다.
+// 화면에 보여줄 모양. 짧게 줄이되, 줄인 글자를 다시 읽어 같은 날이 나올 때만 줄인다.
+//
+// 왜 "올해면 연도 생략"이 아닌가
+//   칸을 열면 이 결과가 그대로 입력칸에 들어간다. 손대지 않고 지나가도 같은 날로 읽혀야 한다.
+//   그런데 연말에 "1/5" 를 내년으로 보는 규칙이 있어서, 9월에 올해 1월 날짜를 "1/1" 로
+//   줄이면 다시 읽을 때 내년 1월이 된다 — 아무것도 안 고쳤는데 날짜가 한 해 밀린다.
+//   그래서 줄인 뒤 직접 읽어 보고, 같은 날이 안 나오면 연도를 붙인다.
+//   두 함수가 서로를 검사하므로 한쪽만 고쳐도 어긋나지 않는다.
+//   (tests/unit/labwork-date.test.mts 의 왕복 검사가 이 짝을 지킨다)
 export function formatDate(isoDate: string | null, today: Date = new Date()): string {
   if (!isoDate) return "";
   const [y, m, d] = isoDate.split("-").map(Number);
   if (!y || !m || !d) return isoDate;
-  return y === today.getFullYear() ? `${m}/${d}` : `${y}. ${m}/${d}`;
+
+  const short = `${m}/${d}`;
+  if (parseLooseDate(short, today) === isoDate) return short;
+  return `${y}. ${m}/${d}`;
 }

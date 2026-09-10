@@ -26,8 +26,25 @@ import {
 
 type Cell = { row: number; col: number };
 
-/** 무엇으로 찾을 수 있는지. 이 셋 말고는 찾아도 쓸모가 없다. */
-const SEARCH_KEYS: (keyof LabworkDraft)[] = ["patient_name", "patient_chart_no", "kind"];
+// 무엇으로 찾을지. 깔때기 버튼에서 켜고 끈다.
+//
+// 날짜는 세 칸(의뢰·예정일·도착일)을 한 항목으로 묶었다. 사람은 "9/15 짜리"를 찾지
+// "예정일이 9/15 인 것"을 찾지 않는다. 셋을 따로 두면 매번 어느 날짜인지 고르게 된다.
+//
+// 기본으로 켜 두는 것은 환자명·등록번호·보철물 셋이다.
+//   날짜와 치식을 처음부터 켜 두면 "9" 한 글자에 거의 모든 줄이 걸려 찾기가 무의미해진다.
+type SearchFieldKey = "patient_name" | "patient_chart_no" | "kind" | "doctor" | "tooth" | "dates";
+
+const SEARCH_FIELDS: { key: SearchFieldKey; label: string; on: boolean }[] = [
+  { key: "patient_name", label: "환자명", on: true },
+  { key: "patient_chart_no", label: "등록번호", on: true },
+  { key: "kind", label: "보철물", on: true },
+  { key: "doctor", label: "의사", on: false },
+  { key: "tooth", label: "치식(번호)", on: false },
+  { key: "dates", label: "날짜", on: false },
+];
+
+const DATE_KEYS: (keyof LabworkDraft)[] = ["ordered_on", "due_on", "arrived_on"];
 
 // 오늘 날짜. toISOString() 은 UTC 라 한국 시간 오전 9시 전에는 하루 전이 나온다.
 function todayIso(): string {
@@ -35,10 +52,19 @@ function todayIso(): string {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
-function matches(row: LabworkRecord, query: string): boolean {
+function matches(row: LabworkRecord, query: string, fields: Set<SearchFieldKey>): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return SEARCH_KEYS.some((key) => String(row[key] ?? "").toLowerCase().includes(q));
+  const hit = (v: unknown) => String(v ?? "").toLowerCase().includes(q);
+
+  for (const field of fields) {
+    if (field === "dates") {
+      // 원본(2026-09-15)과 화면에 보이는 모양(9/15) 둘 다에서 찾는다.
+      // 보이는 대로 "9/15" 를 쳤는데 안 걸리면 고장으로 느껴진다.
+      if (DATE_KEYS.some((k) => hit(row[k]) || hit(formatDate(row[k] as string | null)))) return true;
+    } else if (hit(row[field])) return true;
+  }
+  return false;
 }
 
 export default function LabworkGrid({
@@ -53,12 +79,19 @@ export default function LabworkGrid({
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
+  const [fields, setFields] = useState<Set<SearchFieldKey>>(
+    () => new Set(SEARCH_FIELDS.filter((f) => f.on).map((f) => f.key)),
+  );
+  const [filterOpen, setFilterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 찾는 중에는 보이는 줄만 다룬다. 아래 모든 자리(그리기·키보드 이동·붙여넣기)가
   // 이 목록 하나를 본다 — 원래 목록과 섞어 쓰면 3번째 줄이 서로 다른 줄을 가리킨다.
-  const visible = useMemo(() => rows.filter((r) => matches(r, query)), [rows, query]);
+  const visible = useMemo(
+    () => rows.filter((r) => matches(r, query, fields)),
+    [rows, query, fields],
+  );
   const searching = query.trim().length > 0;
 
   // 고른 칸으로 실제 커서를 옮긴다. 표에서는 "지금 어디에 치고 있는지"가 보여야 한다.
@@ -268,6 +301,12 @@ export default function LabworkGrid({
 
   const allShownSelected = visible.length > 0 && visible.every((r) => selected.has(r.id));
 
+  // 기본값과 다르게 골라 뒀는지. 다르면 깔때기를 켜진 모양으로 둔다 —
+  // 찾아도 안 나올 때 "왜 안 나오지"의 답이 이 버튼에 있어야 한다.
+  const narrowed =
+    fields.size !== SEARCH_FIELDS.filter((f) => f.on).length ||
+    SEARCH_FIELDS.some((f) => f.on !== fields.has(f.key));
+
   function cellValue(row: LabworkRecord, col: LabworkColumn) {
     // 「도착」은 저장된 칸이 아니라 도착일을 보는 창이다.
     if (col.key === ARRIVED_CHECK_KEY) return Boolean(row.arrived_on);
@@ -292,8 +331,10 @@ export default function LabworkGrid({
               // 찾으면 보이는 줄이 바뀐다. 고른 칸이 남아 있으면 엉뚱한 줄이 열린다.
               setActive(null);
             }}
-            placeholder="환자명 · 등록번호 · 보철물"
-            aria-label="환자명, 등록번호, 보철물로 찾기"
+            placeholder={SEARCH_FIELDS.filter((f) => fields.has(f.key))
+              .map((f) => f.label)
+              .join(" · ") || "찾을 항목을 골라주세요"}
+            aria-label="찾기"
             className="min-w-0 flex-1 bg-transparent text-[12px] text-ink outline-none placeholder:text-ink-3"
           />
           {searching && (
@@ -305,6 +346,67 @@ export default function LabworkGrid({
             >
               ×
             </button>
+          )}
+        </div>
+
+        {/* 세부검색 — 어느 칸에서 찾을지 고른다.
+            항목을 검색칸 옆에 늘어놓으면 표보다 자리를 더 차지하므로 깔때기 안에 접어 둔다. */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setFilterOpen((v) => !v)}
+            aria-expanded={filterOpen}
+            aria-label="세부검색"
+            className={`flex items-center gap-1.5 border px-2.5 py-1.5 text-[11.5px] transition-colors ${
+              filterOpen || narrowed
+                ? "border-navy bg-navy text-white"
+                : "border-hair-2 bg-white text-ink-2 hover:border-navy hover:text-navy"
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden>
+              <path
+                d="M1 2h12L8.4 7.3v4.3L5.6 13V7.3L1 2z"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+              />
+            </svg>
+            세부검색
+            {narrowed && <span className="font-mono tabular-nums">{fields.size}</span>}
+          </button>
+
+          {filterOpen && (
+            <div className="absolute right-0 z-10 mt-1 w-44 border border-hair-2 bg-white p-2 shadow-[0_8px_20px_-8px_rgba(12,28,64,.35)]">
+              <p className="px-1 pb-1.5 text-[10.5px] text-ink-3">이 칸에서 찾습니다</p>
+              {SEARCH_FIELDS.map((f) => (
+                <label
+                  key={f.key}
+                  className="flex cursor-pointer items-center gap-2 px-1 py-1 text-[12px] text-ink hover:bg-l-cal"
+                >
+                  <input
+                    type="checkbox"
+                    checked={fields.has(f.key)}
+                    onChange={(e) =>
+                      setFields((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(f.key);
+                        else next.delete(f.key);
+                        return next;
+                      })
+                    }
+                    className="h-3.5 w-3.5 accent-navy"
+                  />
+                  {f.label}
+                </label>
+              ))}
+              <button
+                type="button"
+                onClick={() => setFields(new Set(SEARCH_FIELDS.map((f) => f.key)))}
+                className="mt-1 w-full border-t border-hair px-1 pt-1.5 text-left text-[11px] text-meet-d hover:text-navy"
+              >
+                모두 켜기
+              </button>
+            </div>
           )}
         </div>
 
@@ -440,8 +542,19 @@ export default function LabworkGrid({
                           type="text"
                           inputMode={col.kind === "number" ? "numeric" : undefined}
                           placeholder={col.kind === "date" ? "9/8" : undefined}
-                          defaultValue={typeof value === "string" ? value : ""}
-                          onBlur={(e) => saveCell(row, col.key as keyof LabworkDraft, e.target.value)}
+                          // 날짜는 보이던 모양(9/7) 그대로 연다.
+                          //   원본(2026-09-07)을 넣으면 칸보다 길어 잘리고,
+                          //   방금까지 보던 글자와 달라 고치는 사람이 흠칫한다.
+                          //   이 글자는 그대로 다시 읽힌다(date.ts 왕복 규칙).
+                          defaultValue={col.kind === "date" ? shown : typeof value === "string" ? value : ""}
+                          onBlur={(e) => {
+                            saveCell(row, col.key as keyof LabworkDraft, e.target.value);
+                            // 딴 데를 누르면 칸을 닫는다. 안 닫으면 편집칸이 열린 채로 남아
+                            // 원본 글자가 잘린 상태로 보인다.
+                            setActive((cur) =>
+                              cur?.row === rowIndex && cur?.col === colIndex ? null : cur,
+                            );
+                          }}
                           onKeyDown={(e) => handleKeyDown(e, { row: rowIndex, col: colIndex })}
                           onPaste={(e) => handlePaste(e, { row: rowIndex, col: colIndex })}
                           aria-label={`${rowIndex + 1}번째 줄 ${col.label}`}
