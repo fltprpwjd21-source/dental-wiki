@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LABWORK_COLUMNS, parsePastedGrid, type LabworkColumn } from "@/lib/labwork/columns";
 import { formatDate } from "@/lib/labwork/date";
+import { sortLabwork } from "@/lib/labwork/sort";
 import {
   ARRIVED_CHECK_KEY,
   type LabworkDraft,
@@ -26,6 +27,21 @@ import {
 
 type Cell = { row: number; col: number };
 
+// 되돌릴 수 있는 일 한 건.
+//
+// 브라우저의 Ctrl+Z 는 「입력칸 안에서 방금 친 글자」까지만 되돌린다.
+// 칸을 벗어나 저장된 값, 체크 표시, 지운 줄은 브라우저가 모른다. 그래서 직접 기록한다.
+//
+// 지운 줄을 되살릴 때는 내용만 같은 새 줄로 다시 넣는다(id 가 달라진다).
+// 지운 것을 그대로 되살리려면 지우지 않고 숨기는 구조여야 하는데,
+// 시제품에 그걸 두면 "지웠는데 왜 남아 있냐"가 또 다른 질문이 된다.
+type UndoEntry =
+  | { kind: "cell"; label: string; rowId: string; key: keyof LabworkDraft; before: string | boolean }
+  | { kind: "add"; label: string; ids: string[] }
+  | { kind: "delete"; label: string; rows: LabworkRecord[] };
+
+const UNDO_LIMIT = 30;
+
 // 무엇으로 찾을지. 깔때기 버튼에서 켜고 끈다.
 //
 // 날짜는 세 칸(의뢰·예정일·도착일)을 한 항목으로 묶었다. 사람은 "9/15 짜리"를 찾지
@@ -45,29 +61,6 @@ const SEARCH_FIELDS: { key: SearchFieldKey; label: string; on: boolean }[] = [
 ];
 
 const DATE_KEYS: (keyof LabworkDraft)[] = ["ordered_on", "due_on", "arrived_on"];
-
-// 줄 세우는 규칙: 아직 안 온 것이 위, 그 안에서 예정일 빠른 순.
-// 도착한 것은 아래로 내려가 날짜 순으로 눕는다.
-//
-// 날짜가 빈 줄은 각 무리의 끝에 둔다 — 방금 만들어 아직 안 채운 줄이
-// 맨 위로 튀어 오르면 놀란다.
-function sortKey(row: LabworkRecord): [number, string] {
-  const arrived = row.arrived_on ? 1 : 0;
-  const when = (arrived ? row.arrived_on : row.due_on) || "9999-99-99";
-  return [arrived, when];
-}
-
-function sortedIds(rows: LabworkRecord[]): string[] {
-  return [...rows]
-    .sort((a, b) => {
-      const [ka, wa] = sortKey(a);
-      const [kb, wb] = sortKey(b);
-      if (ka !== kb) return ka - kb;
-      if (wa !== wb) return wa < wb ? -1 : 1;
-      return a.seq - b.seq; // 같으면 넣은 순서를 지킨다
-    })
-    .map((r) => r.id);
-}
 
 // 오늘 날짜. toISOString() 은 UTC 라 한국 시간 오전 9시 전에는 하루 전이 나온다.
 function todayIso(): string {
@@ -106,47 +99,34 @@ export default function LabworkGrid({
     () => new Set(SEARCH_FIELDS.filter((f) => f.on).map((f) => f.key)),
   );
   const [filterOpen, setFilterOpen] = useState(false);
-  // 화면에 세워 둔 순서. 체크할 때마다 즉시 다시 세우지 않는다 —
-  // 도착 확인은 여러 개를 연달아 누르는 일이라, 누를 때마다 줄이 움직이면
-  // 다음에 누르려던 줄이 다른 자리로 가서 엉뚱한 줄을 체크하게 된다.
-  // 다시 세우는 것은 「다시 정렬」을 누르거나 화면을 새로 열 때다.
-  const [order, setOrder] = useState<string[]>(() => sortedIds(initial));
+  // 방금 자리를 옮긴 줄. 옮겨간 곳에서 잠깐 표시해 눈이 따라가게 한다.
+  //   체크하면 그 줄이 곧바로 아래로 내려가는데, 아무 표시가 없으면
+  //   "방금 누른 게 어디 갔지" 하고 찾게 된다.
+  const [moved, setMoved] = useState<string | null>(null);
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 찾는 중에는 보이는 줄만 다룬다. 아래 모든 자리(그리기·키보드 이동·붙여넣기)가
   // 이 목록 하나를 본다 — 원래 목록과 섞어 쓰면 3번째 줄이 서로 다른 줄을 가리킨다.
-  const visible = useMemo(() => {
-    const byId = new Map(rows.map((r) => [r.id, r]));
-    const placed = order.map((id) => byId.get(id)).filter((r): r is LabworkRecord => Boolean(r));
-    // order 에 아직 없는 줄(방금 추가한 것)은 뒤에 붙인다.
-    const known = new Set(order);
-    const fresh = rows.filter((r) => !known.has(r.id));
-    return [...placed, ...fresh].filter((r) => matches(r, query, fields));
-  }, [rows, order, query, fields]);
-
-  // 「다시 정렬」을 눈에 띄게 둘 때는 언제인가.
-  //
-  // 순서가 규칙과 조금이라도 다르면 켜지게 두면, 새 줄을 하나 만들 때마다 켜진다 —
-  // 새 줄은 일부러 맨 위에 놓은 것이라 어긋난 게 아니다.
-  // 실제로 눈에 거슬리는 상황은 하나뿐이다: 끝난 줄이 안 끝난 줄보다 위에 섞여 있는 것.
-  const needsResort = useMemo(() => {
-    const byId = new Map(rows.map((r) => [r.id, r]));
-    let sawDone = false;
-    for (const id of order) {
-      const row = byId.get(id);
-      if (!row) continue;
-      if (row.arrived_on) sawDone = true;
-      else if (sawDone) return true;
-    }
-    return false;
-  }, [rows, order]);
+  // 줄 세우기는 규칙에서 바로 나온다 — 따로 들고 있는 순서가 없다.
+  //   체크하면 그 줄이 곧바로 제자리로 내려간다. 「다시 정렬」 같은 버튼을 두면
+  //   누르기 전까지 화면이 규칙과 다른 상태로 남고, 대부분의 시간을 그 상태로 보게 된다.
+  //   규칙은 lib/labwork/sort.ts 에 있다 (안 온 것 위 · 의뢰일 순 / 끝난 것은 도착한 순).
+  const visible = useMemo(
+    () => sortLabwork(rows).filter((r) => matches(r, query, fields)),
+    [rows, query, fields],
+  );
   const searching = query.trim().length > 0;
 
   // 고른 칸으로 실제 커서를 옮긴다. 표에서는 "지금 어디에 치고 있는지"가 보여야 한다.
   useEffect(() => {
     if (active) inputRef.current?.focus();
   }, [active]);
+
+  const pushUndo = useCallback((entry: UndoEntry) => {
+    setUndoStack((prev) => [...prev, entry].slice(-UNDO_LIMIT));
+  }, []);
 
   const markSaving = useCallback((key: string, on: boolean) => {
     setSaving((prev) => {
@@ -160,9 +140,24 @@ export default function LabworkGrid({
   // 칸 하나를 저장한다. 화면은 먼저 바꾸고 서버에는 뒤따라 보낸다 —
   // 한 글자 칠 때마다 기다리면 표가 아니라 설문지가 된다.
   const saveCell = useCallback(
-    async (row: LabworkRecord, key: keyof LabworkDraft, value: string | boolean) => {
+    async (
+      row: LabworkRecord,
+      key: keyof LabworkDraft,
+      value: string | boolean,
+      opts?: { undoable?: boolean; label?: string },
+    ) => {
       const before = row[key];
       if (before === value) return;
+
+      if (opts?.undoable !== false) {
+        pushUndo({
+          kind: "cell",
+          label: opts?.label ?? "칸 수정",
+          rowId: row.id,
+          key,
+          before: (before ?? "") as string | boolean,
+        });
+      }
 
       setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, [key]: value } : r)));
       const savingKey = `${row.id}:${String(key)}`;
@@ -187,21 +182,29 @@ export default function LabworkGrid({
         markSaving(savingKey, false);
       }
     },
-    [markSaving],
+    [markSaving, pushUndo],
   );
 
   // 「도착」 체크는 도착일을 보는 창일 뿐이다. 체크하면 오늘, 풀면 빈 값.
+  //
+  // 체크하는 순간 그 줄이 자리를 옮긴다. 아무 표시가 없으면 "방금 누른 게 어디 갔지"가 되므로,
+  // 옮겨간 자리에서 잠깐 테두리를 남겨 눈이 따라가게 한다.
   const toggleArrived = useCallback(
-    (row: LabworkRecord, on: boolean) => saveCell(row, "arrived_on", on ? todayIso() : ""),
+    (row: LabworkRecord, on: boolean) => {
+      setMoved(row.id);
+      window.setTimeout(() => setMoved((cur) => (cur === row.id ? null : cur)), 1400);
+      return saveCell(row, "arrived_on", on ? todayIso() : "", {
+        label: on ? "도착 체크" : "도착 해제",
+      });
+    },
     [saveCell],
   );
 
-  // 새 줄을 어디에 놓을지까지 정한다.
-  //   안 온 기공물이 위에 모이는 화면이고, 새로 의뢰한 것은 당연히 안 온 것이다.
-  //   그래서 새 줄은 아래가 아니라 위에 생겨야 손이 가는 자리와 맞는다.
-  //   at 을 주면 그 자리 뒤에 넣는다 — Enter 로 이어 만들 때 방금 채운 줄 바로 아래에 붙는다.
+  // 새 줄이 어디에 놓일지는 정렬 규칙이 정한다.
+  //   의뢰일이 빈 줄은 맨 위로 가므로(sort.ts), 방금 만든 줄이 바로 눈앞에 온다.
+  //   의뢰일을 적는 순간 제자리로 내려간다.
   const addRows = useCallback(
-    async (drafts: Partial<LabworkDraft>[], at?: number) => {
+    async (drafts: Partial<LabworkDraft>[], opts?: { undoable?: boolean }) => {
       setError(null);
       try {
         const res = await fetch("/api/lab/items", {
@@ -213,18 +216,16 @@ export default function LabworkGrid({
         if (!res.ok) throw new Error(data.error ?? "줄을 추가하지 못했습니다.");
         const made = data.items as LabworkRecord[];
         setRows((prev) => [...prev, ...made]);
-        setOrder((prev) => {
-          const ids = made.map((r) => r.id);
-          const where = at === undefined ? 0 : at + 1;
-          return [...prev.slice(0, where), ...ids, ...prev.slice(where)];
-        });
+        if (opts?.undoable !== false && made.length > 0) {
+          pushUndo({ kind: "add", label: `줄 추가 ${made.length}개`, ids: made.map((r) => r.id) });
+        }
         return made;
       } catch (e) {
         setError(e instanceof Error ? e.message : "줄을 추가하지 못했습니다.");
         return [];
       }
     },
-    [scope],
+    [scope, pushUndo],
   );
 
   // 고른 줄을 한 번에 지운다. 한 줄씩 스무 번 보내면 중간에 하나가 실패했을 때
@@ -235,9 +236,11 @@ export default function LabworkGrid({
     if (!confirm(`${ids.length}줄을 지울까요? 되돌릴 수 없습니다.`)) return;
 
     const snapshot = rows;
+    const gone = rows.filter((r) => selected.has(r.id));
     setRows((prev) => prev.filter((r) => !selected.has(r.id)));
     setSelected(new Set());
     setActive(null);
+    pushUndo({ kind: "delete", label: `줄 삭제 ${gone.length}개`, rows: gone });
 
     const res = await fetch("/api/lab/items", {
       method: "DELETE",
@@ -248,7 +251,71 @@ export default function LabworkGrid({
       setRows(snapshot);
       setError("지우지 못했습니다.");
     }
-  }, [selected, rows]);
+  }, [selected, rows, pushUndo]);
+
+  // 마지막 한 건을 되돌린다.
+  //   되돌리는 동안에는 기록을 새로 남기지 않는다(undoable: false).
+  //   안 그러면 되돌리기가 또 되돌릴 거리를 만들어 스택이 끝나지 않는다.
+  const undo = useCallback(async () => {
+    const entry = undoStack[undoStack.length - 1];
+    if (!entry) return;
+    setUndoStack((prev) => prev.slice(0, -1));
+    setError(null);
+
+    if (entry.kind === "cell") {
+      const row = rows.find((r) => r.id === entry.rowId);
+      if (!row) return;
+      await saveCell(row, entry.key, entry.before, { undoable: false });
+      setMoved(row.id);
+      window.setTimeout(() => setMoved((cur) => (cur === row.id ? null : cur)), 1400);
+      return;
+    }
+
+    if (entry.kind === "add") {
+      setRows((prev) => prev.filter((r) => !entry.ids.includes(r.id)));
+      await fetch("/api/lab/items", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: entry.ids }),
+      });
+      return;
+    }
+
+    // 지운 줄 되살리기 — 내용만 같은 새 줄로 다시 넣는다(id 는 새로 받는다).
+    const drafts = entry.rows.map((r) => ({
+      lab: r.lab,
+      patient_chart_no: r.patient_chart_no,
+      ordered_on: r.ordered_on,
+      patient_name: r.patient_name,
+      doctor: r.doctor,
+      kind: r.kind,
+      tooth: r.tooth,
+      tooth_count: r.tooth_count,
+      ab_count: r.ab_count,
+      due_on: r.due_on,
+      note: r.note,
+      arrived_on: r.arrived_on,
+      oral_scan: r.oral_scan,
+    }));
+    await addRows(drafts, { undoable: false });
+  }, [undoStack, rows, saveCell, addRows]);
+
+  // Ctrl+Z(맥은 Cmd+Z)도 받는다.
+  //
+  // 표의 칸을 편집하는 중일 때만 브라우저에 양보한다 —
+  // 그때는 "방금 친 글자"를 되돌리는 게 사람이 기대하는 동작이기 때문이다.
+  //   글자 입력칸이면 전부 양보하게 두면, 검색칸에 커서가 있을 때 Ctrl+Z 가 아무 일도
+  //   안 한다. 검색어는 데이터가 아니라 되돌릴 거리도 아니다 — 실제로 그렇게 동작했다.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.key === "z" && (e.metaKey || e.ctrlKey)) || e.shiftKey) return;
+      if ((document.activeElement as HTMLElement | null)?.dataset?.cellInput === "1") return;
+      e.preventDefault();
+      void undo();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo]);
 
   const toggleSelected = useCallback((id: string, on: boolean) => {
     setSelected((prev) => {
@@ -272,8 +339,7 @@ export default function LabworkGrid({
       let target = visible;
       if (needed > 0) {
         if (searching) return; // 찾는 중에는 줄을 만들지 않는다 — 만들어도 바로 사라진다
-        const anchor = order.indexOf(visible[visible.length - 1]?.id ?? "");
-        const made = await addRows(Array.from({ length: needed }, () => ({})), anchor >= 0 ? anchor : undefined);
+        const made = await addRows(Array.from({ length: needed }, () => ({})));
         if (made.length < needed) return;
         target = [...visible, ...made];
       }
@@ -292,7 +358,7 @@ export default function LabworkGrid({
         }
       }
     },
-    [visible, order, searching, addRows, saveCell, toggleArrived],
+    [visible, searching, addRows, saveCell, toggleArrived],
   );
 
   // 표 안에서 키보드로만 돌아다닐 수 있어야 한다. 손이 마우스로 가면 표가 아니다.
@@ -348,15 +414,12 @@ export default function LabworkGrid({
       if (next.row >= visible.length) {
         // 찾는 중에는 줄을 만들지 않는다. 만들어 봐야 조건에 안 맞아 바로 사라진다.
         if (searching) return;
-        // 지금 줄 바로 아래에 만든다. 맨 위에 만들면 방금 채운 줄 위로 올라가
-        // 입력 순서가 거꾸로 읽힌다.
-        const anchor = order.indexOf(visible[at.row]?.id ?? "");
-        const made = await addRows([{}], anchor >= 0 ? anchor : undefined);
+        const made = await addRows([{}]);
         if (made.length === 0) return;
       }
       setActive(next);
     },
-    [visible, order, addRows, saveCell, scope, searching],
+    [visible, addRows, saveCell, scope, searching],
   );
 
   // 맨 앞의 좁은 칸은 줄 고르기용이다.
@@ -504,27 +567,41 @@ export default function LabworkGrid({
           + 줄 추가
         </button>
 
-        {/* 다시 세우기는 누를 때만 한다. 체크할 때마다 저절로 움직이면
-            연달아 확인하는 동안 줄이 계속 흔들려 엉뚱한 줄을 누르게 된다. */}
-        <button
-          type="button"
-          onClick={() => setOrder(sortedIds(rows))}
-          className={`border px-3 py-1.5 transition-colors ${
-            needsResort
-              ? "border-navy bg-navy text-white"
-              : "border-hair-2 text-ink-2 hover:border-navy hover:text-navy"
-          }`}
-        >
-          다시 정렬
-        </button>
-
         <span className="text-ink-3">
           {searching
             ? "찾는 중에는 줄을 추가할 수 없습니다. 찾기를 지우고 눌러주세요."
-            : needsResort
-              ? "도착 여부가 바뀌었습니다. 「다시 정렬」을 누르면 안 온 것이 위로 올라옵니다."
-              : "칸을 누르면 바로 입력 · Tab 다음 칸 · Enter 아래 칸 · 엑셀에서 복사해 붙여넣기 가능"}
+            : "안 온 것이 위(의뢰일 순) · 도착 체크하면 아래로 내려갑니다 · Tab 다음 칸 · Enter 아래 칸"}
         </span>
+
+        {/* 되돌리기는 줄 추가와 같은 줄 오른쪽 끝에 둔다.
+            Ctrl+Z 로도 되지만, 되는지 몰라서 안 쓰는 기능은 없는 것과 같다. */}
+        <button
+          type="button"
+          onClick={undo}
+          disabled={undoStack.length === 0}
+          title={
+            undoStack.length > 0
+              ? `되돌리기: ${undoStack[undoStack.length - 1].label} (Ctrl+Z)`
+              : "되돌릴 것이 없습니다"
+          }
+          className="ml-auto flex items-center gap-1.5 border border-hair-2 px-3 py-1.5 text-ink-2 transition-colors hover:border-navy hover:text-navy disabled:cursor-not-allowed disabled:border-hair disabled:text-ink-3 disabled:hover:border-hair"
+        >
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden>
+            <path
+              d="M4.2 3.2L1.6 5.8l2.6 2.6M1.9 5.8h6.4a3.8 3.8 0 010 7.6H4.6"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          되돌리기
+          {undoStack.length > 0 && (
+            <span className="font-mono text-[10.5px] tabular-nums text-ink-3">
+              {undoStack.length}
+            </span>
+          )}
+        </button>
       </div>
 
       {error && (
@@ -579,7 +656,7 @@ export default function LabworkGrid({
                 key={row.id}
                 className={`grid border-b border-hair text-[12.5px] last:border-b-0 ${
                   picked ? "bg-l-cal" : done ? "bg-l-done hover:bg-l-cal" : "hover:bg-l-cal"
-                }`}
+                } ${moved === row.id ? "ring-1 ring-inset ring-sched" : ""}`}
                 style={{ gridTemplateColumns: template }}
               >
                 <label className="flex cursor-pointer items-center justify-center">
@@ -663,6 +740,8 @@ export default function LabworkGrid({
                           onKeyDown={(e) => handleKeyDown(e, { row: rowIndex, col: colIndex })}
                           onPaste={(e) => handlePaste(e, { row: rowIndex, col: colIndex })}
                           aria-label={`${rowIndex + 1}번째 줄 ${col.label}`}
+                          // 편집 중인 칸에서는 Ctrl+Z 를 브라우저에 넘긴다 (위 useEffect 참고)
+                          data-cell-input="1"
                           className="w-full bg-white px-2.5 py-1.5 text-[12.5px] text-ink outline-none"
                         />
                       ) : (
