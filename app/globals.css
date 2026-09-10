@@ -37,6 +37,11 @@
   --late: #a8231a;
   --soon: #a35f0c;
   --done: #2b6f5f;
+  /* 도착이 끝난 줄의 바탕. 아주 연한 하늘색이다 — 글자를 읽는 데는 방해가 없고,
+     훑어 내릴 때 "이건 끝난 것"이 한눈에 갈린다.
+     초록(--done)을 옅게 쓰지 않는 이유: 캘린더·공지에 초록 바탕이 없어서
+     이 색만 다른 뜻으로 읽히게 된다. 파랑 계열은 이 앱 전체의 바탕색과 같은 가족이다. */
+  --l-done: #eaf4fa;
 
   --background: var(--l-card);
   --foreground: var(--on-light);
@@ -60,6 +65,7 @@
 
   --color-l-card: var(--l-card);
   --color-l-lab: var(--l-lab);
+  --color-l-done: var(--l-done);
   --color-l-form: var(--l-form);
   --color-l-cal: var(--l-cal);
   --color-l-body: var(--l-body);

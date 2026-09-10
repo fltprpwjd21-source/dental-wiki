@@ -46,6 +46,29 @@ const SEARCH_FIELDS: { key: SearchFieldKey; label: string; on: boolean }[] = [
 
 const DATE_KEYS: (keyof LabworkDraft)[] = ["ordered_on", "due_on", "arrived_on"];
 
+// 줄 세우는 규칙: 아직 안 온 것이 위, 그 안에서 예정일 빠른 순.
+// 도착한 것은 아래로 내려가 날짜 순으로 눕는다.
+//
+// 날짜가 빈 줄은 각 무리의 끝에 둔다 — 방금 만들어 아직 안 채운 줄이
+// 맨 위로 튀어 오르면 놀란다.
+function sortKey(row: LabworkRecord): [number, string] {
+  const arrived = row.arrived_on ? 1 : 0;
+  const when = (arrived ? row.arrived_on : row.due_on) || "9999-99-99";
+  return [arrived, when];
+}
+
+function sortedIds(rows: LabworkRecord[]): string[] {
+  return [...rows]
+    .sort((a, b) => {
+      const [ka, wa] = sortKey(a);
+      const [kb, wb] = sortKey(b);
+      if (ka !== kb) return ka - kb;
+      if (wa !== wb) return wa < wb ? -1 : 1;
+      return a.seq - b.seq; // 같으면 넣은 순서를 지킨다
+    })
+    .map((r) => r.id);
+}
+
 // 오늘 날짜. toISOString() 은 UTC 라 한국 시간 오전 9시 전에는 하루 전이 나온다.
 function todayIso(): string {
   const now = new Date();
@@ -83,15 +106,41 @@ export default function LabworkGrid({
     () => new Set(SEARCH_FIELDS.filter((f) => f.on).map((f) => f.key)),
   );
   const [filterOpen, setFilterOpen] = useState(false);
+  // 화면에 세워 둔 순서. 체크할 때마다 즉시 다시 세우지 않는다 —
+  // 도착 확인은 여러 개를 연달아 누르는 일이라, 누를 때마다 줄이 움직이면
+  // 다음에 누르려던 줄이 다른 자리로 가서 엉뚱한 줄을 체크하게 된다.
+  // 다시 세우는 것은 「다시 정렬」을 누르거나 화면을 새로 열 때다.
+  const [order, setOrder] = useState<string[]>(() => sortedIds(initial));
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 찾는 중에는 보이는 줄만 다룬다. 아래 모든 자리(그리기·키보드 이동·붙여넣기)가
   // 이 목록 하나를 본다 — 원래 목록과 섞어 쓰면 3번째 줄이 서로 다른 줄을 가리킨다.
-  const visible = useMemo(
-    () => rows.filter((r) => matches(r, query, fields)),
-    [rows, query, fields],
-  );
+  const visible = useMemo(() => {
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const placed = order.map((id) => byId.get(id)).filter((r): r is LabworkRecord => Boolean(r));
+    // order 에 아직 없는 줄(방금 추가한 것)은 뒤에 붙인다.
+    const known = new Set(order);
+    const fresh = rows.filter((r) => !known.has(r.id));
+    return [...placed, ...fresh].filter((r) => matches(r, query, fields));
+  }, [rows, order, query, fields]);
+
+  // 「다시 정렬」을 눈에 띄게 둘 때는 언제인가.
+  //
+  // 순서가 규칙과 조금이라도 다르면 켜지게 두면, 새 줄을 하나 만들 때마다 켜진다 —
+  // 새 줄은 일부러 맨 위에 놓은 것이라 어긋난 게 아니다.
+  // 실제로 눈에 거슬리는 상황은 하나뿐이다: 끝난 줄이 안 끝난 줄보다 위에 섞여 있는 것.
+  const needsResort = useMemo(() => {
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    let sawDone = false;
+    for (const id of order) {
+      const row = byId.get(id);
+      if (!row) continue;
+      if (row.arrived_on) sawDone = true;
+      else if (sawDone) return true;
+    }
+    return false;
+  }, [rows, order]);
   const searching = query.trim().length > 0;
 
   // 고른 칸으로 실제 커서를 옮긴다. 표에서는 "지금 어디에 치고 있는지"가 보여야 한다.
@@ -147,8 +196,12 @@ export default function LabworkGrid({
     [saveCell],
   );
 
+  // 새 줄을 어디에 놓을지까지 정한다.
+  //   안 온 기공물이 위에 모이는 화면이고, 새로 의뢰한 것은 당연히 안 온 것이다.
+  //   그래서 새 줄은 아래가 아니라 위에 생겨야 손이 가는 자리와 맞는다.
+  //   at 을 주면 그 자리 뒤에 넣는다 — Enter 로 이어 만들 때 방금 채운 줄 바로 아래에 붙는다.
   const addRows = useCallback(
-    async (drafts: Partial<LabworkDraft>[]) => {
+    async (drafts: Partial<LabworkDraft>[], at?: number) => {
       setError(null);
       try {
         const res = await fetch("/api/lab/items", {
@@ -158,8 +211,14 @@ export default function LabworkGrid({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "줄을 추가하지 못했습니다.");
-        setRows((prev) => [...prev, ...(data.items as LabworkRecord[])]);
-        return data.items as LabworkRecord[];
+        const made = data.items as LabworkRecord[];
+        setRows((prev) => [...prev, ...made]);
+        setOrder((prev) => {
+          const ids = made.map((r) => r.id);
+          const where = at === undefined ? 0 : at + 1;
+          return [...prev.slice(0, where), ...ids, ...prev.slice(where)];
+        });
+        return made;
       } catch (e) {
         setError(e instanceof Error ? e.message : "줄을 추가하지 못했습니다.");
         return [];
@@ -213,7 +272,8 @@ export default function LabworkGrid({
       let target = visible;
       if (needed > 0) {
         if (searching) return; // 찾는 중에는 줄을 만들지 않는다 — 만들어도 바로 사라진다
-        const made = await addRows(Array.from({ length: needed }, () => ({})));
+        const anchor = order.indexOf(visible[visible.length - 1]?.id ?? "");
+        const made = await addRows(Array.from({ length: needed }, () => ({})), anchor >= 0 ? anchor : undefined);
         if (made.length < needed) return;
         target = [...visible, ...made];
       }
@@ -232,7 +292,7 @@ export default function LabworkGrid({
         }
       }
     },
-    [visible, searching, addRows, saveCell, toggleArrived],
+    [visible, order, searching, addRows, saveCell, toggleArrived],
   );
 
   // 표 안에서 키보드로만 돌아다닐 수 있어야 한다. 손이 마우스로 가면 표가 아니다.
@@ -288,12 +348,15 @@ export default function LabworkGrid({
       if (next.row >= visible.length) {
         // 찾는 중에는 줄을 만들지 않는다. 만들어 봐야 조건에 안 맞아 바로 사라진다.
         if (searching) return;
-        const made = await addRows([{}]);
+        // 지금 줄 바로 아래에 만든다. 맨 위에 만들면 방금 채운 줄 위로 올라가
+        // 입력 순서가 거꾸로 읽힌다.
+        const anchor = order.indexOf(visible[at.row]?.id ?? "");
+        const made = await addRows([{}], anchor >= 0 ? anchor : undefined);
         if (made.length === 0) return;
       }
       setActive(next);
     },
-    [visible, addRows, saveCell, scope, searching],
+    [visible, order, addRows, saveCell, scope, searching],
   );
 
   // 맨 앞의 좁은 칸은 줄 고르기용이다.
@@ -425,6 +488,45 @@ export default function LabworkGrid({
         </span>
       </div>
 
+      {/* 버튼을 표 위에 둔다.
+          안 온 기공물이 위에 모이는 화면이라 손이 가는 곳도 위다.
+          아래에 두면 새 줄을 만들 때마다 스무 줄을 지나 내려갔다 올라와야 한다. */}
+      <div className="mb-2.5 flex flex-wrap items-center gap-2 text-[11.5px]">
+        <button
+          type="button"
+          disabled={searching}
+          onClick={async () => {
+            const made = await addRows([{}]);
+            if (made.length > 0) setActive({ row: 0, col: 0 });
+          }}
+          className="border border-navy px-3 py-1.5 text-navy transition-colors hover:bg-navy hover:text-white disabled:cursor-not-allowed disabled:border-hair-2 disabled:text-ink-3 disabled:hover:bg-transparent"
+        >
+          + 줄 추가
+        </button>
+
+        {/* 다시 세우기는 누를 때만 한다. 체크할 때마다 저절로 움직이면
+            연달아 확인하는 동안 줄이 계속 흔들려 엉뚱한 줄을 누르게 된다. */}
+        <button
+          type="button"
+          onClick={() => setOrder(sortedIds(rows))}
+          className={`border px-3 py-1.5 transition-colors ${
+            needsResort
+              ? "border-navy bg-navy text-white"
+              : "border-hair-2 text-ink-2 hover:border-navy hover:text-navy"
+          }`}
+        >
+          다시 정렬
+        </button>
+
+        <span className="text-ink-3">
+          {searching
+            ? "찾는 중에는 줄을 추가할 수 없습니다. 찾기를 지우고 눌러주세요."
+            : needsResort
+              ? "도착 여부가 바뀌었습니다. 「다시 정렬」을 누르면 안 온 것이 위로 올라옵니다."
+              : "칸을 누르면 바로 입력 · Tab 다음 칸 · Enter 아래 칸 · 엑셀에서 복사해 붙여넣기 가능"}
+        </span>
+      </div>
+
       {error && (
         <p role="alert" className="mb-2 border-l-2 border-late bg-white px-3 py-2 text-[12px] text-late">
           {error}
@@ -469,11 +571,14 @@ export default function LabworkGrid({
 
           {visible.map((row, rowIndex) => {
             const picked = selected.has(row.id);
+            // 도착이 끝난 줄은 아주 연한 하늘색으로 눕는다. 훑어 내릴 때 한눈에 갈린다.
+            // 고른 줄은 그보다 세게 표시해야 하므로 고르기가 이긴다.
+            const done = Boolean(row.arrived_on);
             return (
               <div
                 key={row.id}
                 className={`grid border-b border-hair text-[12.5px] last:border-b-0 ${
-                  picked ? "bg-l-cal" : "hover:bg-l-cal"
+                  picked ? "bg-l-cal" : done ? "bg-l-done hover:bg-l-cal" : "hover:bg-l-cal"
                 }`}
                 style={{ gridTemplateColumns: template }}
               >
@@ -587,24 +692,6 @@ export default function LabworkGrid({
         </div>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[11.5px]">
-        <button
-          type="button"
-          disabled={searching}
-          onClick={async () => {
-            const made = await addRows([{}]);
-            if (made.length > 0) setActive({ row: visible.length, col: 0 });
-          }}
-          className="border border-navy px-3 py-1.5 text-navy transition-colors hover:bg-navy hover:text-white disabled:cursor-not-allowed disabled:border-hair-2 disabled:text-ink-3 disabled:hover:bg-transparent"
-        >
-          + 줄 추가
-        </button>
-        <span className="text-ink-3">
-          {searching
-            ? "찾는 중에는 줄을 추가할 수 없습니다. 찾기를 지우고 눌러주세요."
-            : "칸을 누르면 바로 입력 · Tab 다음 칸 · Enter 아래 칸 · 엑셀에서 복사해 붙여넣기 가능"}
-        </span>
-      </div>
     </div>
   );
 }
