@@ -3,6 +3,7 @@ import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { INTERNAL_LAB_NAME, type LabworkScope } from "@/lib/labwork/types";
 import { cleanDraft, LABWORK_SELECT } from "@/lib/labwork/draft";
+import { isUuid } from "@/lib/uuid";
 
 // 기공물 장부 시제품 — 목록 조회와 새 줄 추가.
 //
@@ -82,5 +83,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "줄을 추가하지 못했습니다." }, { status: 500 });
     }
     return NextResponse.json({ items: data ?? [] }, { status: 201 });
+  });
+}
+
+// 여러 줄 한 번에 지우기.
+//
+// 한 줄씩 지우는 요청을 스무 번 보내면, 중간에 하나가 실패했을 때 화면과 DB 가 어긋난다.
+// 한 번에 보내면 결과도 하나다.
+export async function DELETE(request: NextRequest) {
+  return withSession(async () => {
+    const body = await request.json().catch(() => null);
+    const ids: unknown[] = Array.isArray(body?.ids) ? body.ids : [];
+    const valid = ids.filter((id): id is string => typeof id === "string" && isUuid(id));
+
+    if (valid.length === 0) {
+      return NextResponse.json({ error: "지울 줄을 고르지 않았습니다." }, { status: 400 });
+    }
+    if (valid.length !== ids.length) {
+      // 하나라도 이상하면 통째로 막는다. 일부만 지우면 무엇이 남았는지 알 수 없다.
+      return NextResponse.json({ error: "잘못된 요청입니다." }, { status: 400 });
+    }
+
+    const supabase = getServerSupabaseClient();
+    const { error } = await supabase.from("labwork_items").delete().in("id", valid);
+    if (error) {
+      console.error("[lab] 여러 줄 삭제 실패:", error);
+      return NextResponse.json({ error: "지우지 못했습니다." }, { status: 500 });
+    }
+    return NextResponse.json({ deleted: valid.length });
   });
 }

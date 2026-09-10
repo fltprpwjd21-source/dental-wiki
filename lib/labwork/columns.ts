@@ -4,12 +4,12 @@
 //   실제 구글 시트의 열 이름을 아직 못 봤다. 확인되면 여기만 고치면
 //   화면의 칸 순서·붙여넣기 순서·저장 필드가 한꺼번에 따라온다.
 //   화면 JSX 안에 칸을 늘어놓으면 그때 세 곳을 따로 고치게 되고, 하나를 빠뜨린다.
-import type { LabworkDraft } from "./types";
+import type { LabworkColumnKey } from "./types";
 
 export type LabworkColumnKind = "date" | "text" | "number" | "check";
 
 export type LabworkColumn = {
-  key: keyof LabworkDraft;
+  key: LabworkColumnKey;
   label: string;
   kind: LabworkColumnKind;
   /** 화면에서 차지할 너비 (grid-template-columns 값) */
@@ -37,6 +37,9 @@ export const LABWORK_COLUMNS: LabworkColumn[] = [
   { key: "arrived_on", label: "도착일", kind: "date", width: "5rem" },
   // 구강스캔인 경우에만 체크한다. 글자로 두면 매번 손으로 치게 되고 오타가 집계에서 빠진다.
   { key: "oral_scan", label: "구강스캔", kind: "check", width: "4.5rem" },
+  // 도착 확인용 체크. 저장되는 값은 앞의 「도착일」 하나뿐이다 —
+  // 체크하면 오늘 날짜가 그리로 들어가고, 풀면 지워진다 (types.ts ARRIVED_CHECK_KEY).
+  { key: "arrived", label: "도착", kind: "check", width: "3.5rem" },
 ];
 
 // 엑셀에서 복사하면 칸은 탭, 줄은 줄바꿈으로 붙는다(TSV).

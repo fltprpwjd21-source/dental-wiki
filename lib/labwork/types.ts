@@ -107,6 +107,13 @@ export const EMPTY_DRAFT: LabworkDraft = {
   oral_scan: false,
 };
 
+// 「도착」 체크는 화면에만 있는 칸이다. 저장되는 값은 도착일(arrived_on) 하나뿐이다.
+//   체크하면 오늘 날짜가 도착일에 찍히고, 풀면 지워진다.
+//   참/거짓을 따로 저장하지 않는 이유: 두 값을 두면 "날짜는 비었는데 도착으로 찍힌 줄"이
+//   반드시 생긴다. 보는 방법이 둘이어도 진실은 하나여야 한다.
+export const ARRIVED_CHECK_KEY = "arrived" as const;
+export type LabworkColumnKey = keyof LabworkDraft | typeof ARRIVED_CHECK_KEY;
+
 // 내부시트는 기공실에서 만든다. 기공소 칸을 지우지 않고 이 값을 미리 채워 둔다 —
 // 두 시트의 열이 같아야 화면·붙여넣기·나중의 합산 통계가 한 벌로 끝난다.
 export const INTERNAL_LAB_NAME = "기공실";
