@@ -183,9 +183,13 @@ export default function LabworkGrid({
 
       if (key === "Tab") {
         let { row: r, col: c } = at;
-        c += shiftHeld ? -1 : 1;
-        if (c > lastCol) { c = 0; r += 1; }
-        if (c < 0) { c = lastCol; r -= 1; }
+        const step = shiftHeld ? -1 : 1;
+        // 잠긴 칸(내부시트의 기공소)은 건너뛴다. 멈춰 서면 Tab 이 먹통처럼 느껴진다.
+        do {
+          c += step;
+          if (c > lastCol) { c = 0; r += 1; }
+          if (c < 0) { c = lastCol; r -= 1; }
+        } while (scope === "internal" && LABWORK_COLUMNS[c]?.key === "lab");
         if (r < 0) return;
         next = { row: r, col: c };
       } else {
@@ -199,7 +203,7 @@ export default function LabworkGrid({
       }
       setActive(next);
     },
-    [rows, addRows, saveCell],
+    [rows, addRows, saveCell, scope],
   );
 
   const template = useMemo(
@@ -246,7 +250,9 @@ export default function LabworkGrid({
               style={{ gridTemplateColumns: template }}
             >
               {LABWORK_COLUMNS.map((col, colIndex) => {
-                const here = active?.row === rowIndex && active?.col === colIndex;
+                // 내부시트의 기공소는 언제나 기공실이다. 열어 두면 실수로 바뀐다.
+                const locked = scope === "internal" && col.key === "lab";
+                const here = !locked && active?.row === rowIndex && active?.col === colIndex;
                 const busy = saving.has(`${row.id}:${String(col.key)}`);
                 const value = row[col.key];
                 // 날짜는 짧게(9/8), 나머지는 있는 그대로. 빈 칸은 — 로 표시한다.
@@ -300,8 +306,11 @@ export default function LabworkGrid({
                     ) : (
                       <button
                         type="button"
+                        disabled={locked}
                         onClick={() => setActive({ row: rowIndex, col: colIndex })}
-                        className="w-full truncate px-2.5 py-1.5 text-left text-ink"
+                        className={`w-full truncate px-2.5 py-1.5 text-left ${
+                          locked ? "cursor-default text-ink-3" : "text-ink"
+                        }`}
                       >
                         {shown || <span className="text-ink-3">—</span>}
                       </button>

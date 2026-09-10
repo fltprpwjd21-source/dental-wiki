@@ -2,7 +2,7 @@ import { EMPTY_DRAFT, type LabworkDraft } from "./types";
 import { parseLooseDate } from "./date";
 
 export const LABWORK_SELECT =
-  "id, seq, scope, lab, ordered_on, doctor, kind, tooth, tooth_count, ab_count, due_on, note, arrived, arrived_on, oral_scan, updated_at";
+  "id, seq, scope, lab, patient_chart_no, ordered_on, patient_name, doctor, kind, tooth, tooth_count, ab_count, due_on, note, arrived_on, oral_scan, updated_at";
 
 // 화면이 보낸 값을 그대로 믿지 않는다. 표에 직접 치는 화면이라 무엇이든 들어온다.
 //
@@ -23,15 +23,7 @@ export function cleanDraft(body: unknown): Record<string, unknown> {
       continue;
     }
 
-    if (key === "arrived") {
-      out.arrived = value === true;
-      // 도착 여부와 도착일을 따로 치게 하면 한쪽은 반드시 빈다.
-      // 체크하는 순간 오늘로 찍고, 풀면 지운다.
-      out.arrived_on = value === true ? todayIso() : null;
-      continue;
-    }
-
-    if (key === "ordered_on" || key === "due_on") {
+    if (key === "ordered_on" || key === "due_on" || key === "arrived_on") {
       // "9/8", "9월 15일" 처럼 사람이 치는 모양도 받는다 (lib/labwork/date.ts).
       // 읽지 못한 값은 null 로 둔다 — 덜 친 값을 저장하면 나중에 조회가 통째로 깨진다.
       out[key] = parseLooseDate(typeof value === "string" ? value : "");
@@ -50,11 +42,4 @@ export function cleanDraft(body: unknown): Record<string, unknown> {
     out[key] = typeof value === "string" ? value : "";
   }
   return out;
-}
-
-// toISOString() 은 UTC 로 바꾸므로 한국 시간 오전 9시 이전에는 하루 전 날짜가 나온다.
-// (lib/notices.ts 의 isoDate 와 같은 이유다)
-export function todayIso(now: Date = new Date()): string {
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
 }

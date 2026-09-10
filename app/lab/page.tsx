@@ -53,9 +53,10 @@ export default async function LabPage({
             아무렇게나 넣고 지워보세요.
             <br />
             <span className="text-ink-3">
-              시트의 <strong className="font-medium text-ink-2">등록번호·환자명</strong> 두 칸은
-              일부러 없습니다. 환자를 특정하는 값이라 지금 쓰는 외부 서버에 저장하지 않습니다.
-              병원 안(NAS)으로 옮긴 뒤에 더합니다.
+              지금은 <strong className="font-medium text-ink-2">병원 밖 서버</strong>에 저장됩니다.
+              확인하는 동안에는 <strong className="font-medium text-ink-2">환자 이름·등록번호를
+              가짜로</strong> 넣어주세요 — 손맛을 보는 데는 차이가 없습니다. 실제 장부는 병원
+              안(NAS)으로 옮긴 뒤에 넣습니다.
             </span>
           </p>
         </div>

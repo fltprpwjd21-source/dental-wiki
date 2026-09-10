@@ -18,25 +18,25 @@ export type LabworkColumn = {
   hideOnPhone?: boolean;
 };
 
-// 실제 시트(2026-09-10 확인)의 열 순서를 그대로 따른다.
+// 실제 시트(2026-09-10 확인) A~M 열을 그 순서 그대로 세운다.
 // 쓰던 순서와 다르면 붙여넣기가 어긋나고, 눈도 매번 다시 찾아야 한다.
-//   시트 13열 중 등록번호(B)·환자명(D)은 빠져 있다 — 환자를 특정하는 값이라
-//   외부 클라우드인 지금 DB 에 저장하지 않는다. NAS 이전 후에 더한다.
 export const LABWORK_COLUMNS: LabworkColumn[] = [
   // 기공소 이름은 세 글자가 대부분이다. 늘려 두면 오른쪽 칸들이 밀린다.
   { key: "lab", label: "기공소", kind: "text", width: "4.5rem" },
+  { key: "patient_chart_no", label: "등록번호", kind: "text", width: "5.5rem" },
   // 날짜는 "9/8" 로 짧게 보여주므로 칸도 그만큼만 있으면 된다.
   { key: "ordered_on", label: "의뢰", kind: "date", width: "4rem", hideOnPhone: true },
-  { key: "doctor", label: "의사", kind: "text", width: "minmax(4.5rem, .7fr)", hideOnPhone: true },
-  { key: "kind", label: "보철물", kind: "text", width: "minmax(9rem, 1.6fr)" },
-  { key: "tooth", label: "치식", kind: "text", width: "minmax(4rem, .7fr)", hideOnPhone: true },
-  { key: "tooth_count", label: "치아", kind: "number", width: "3.5rem", hideOnPhone: true },
-  { key: "ab_count", label: "AB", kind: "number", width: "3.5rem", hideOnPhone: true },
+  { key: "patient_name", label: "환자명", kind: "text", width: "4.5rem" },
+  { key: "doctor", label: "의사", kind: "text", width: "4.5rem", hideOnPhone: true },
+  { key: "kind", label: "보철물", kind: "text", width: "minmax(8rem, 1.6fr)" },
+  { key: "tooth", label: "치식", kind: "text", width: "minmax(3.5rem, .7fr)", hideOnPhone: true },
+  { key: "tooth_count", label: "치아", kind: "number", width: "3.2rem", hideOnPhone: true },
+  { key: "ab_count", label: "AB", kind: "number", width: "3.2rem", hideOnPhone: true },
   { key: "due_on", label: "예정일", kind: "date", width: "5rem" },
-  { key: "note", label: "비고", kind: "text", width: "minmax(7rem, 1.4fr)", hideOnPhone: true },
-  { key: "arrived", label: "도착", kind: "check", width: "4rem" },
+  { key: "note", label: "비고", kind: "text", width: "minmax(6rem, 1.2fr)", hideOnPhone: true },
+  { key: "arrived_on", label: "도착일", kind: "date", width: "5rem" },
   // 구강스캔인 경우에만 체크한다. 글자로 두면 매번 손으로 치게 되고 오타가 집계에서 빠진다.
-  { key: "oral_scan", label: "구강스캔", kind: "check", width: "5rem" },
+  { key: "oral_scan", label: "구강스캔", kind: "check", width: "4.5rem" },
 ];
 
 // 엑셀에서 복사하면 칸은 탭, 줄은 줄바꿈으로 붙는다(TSV).

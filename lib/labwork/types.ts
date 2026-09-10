@@ -60,20 +60,21 @@ export const LABWORK_LOAD_MESSAGE: Record<
 // 원본을 어디에 둘지가 아직 정해지지 않았기 때문이다(NAS 이전 후 판단).
 // 하나로 합치는 것은 그 결정이 난 뒤에 한다. 미리 합치면 안 쓰는 필드가 생긴다.
 
-/** 표 한 줄에서 사람이 고칠 수 있는 칸들. 실제 시트 13열 중 11열이다.
- *  등록번호·환자명은 없다 — 환자를 특정하는 값이라 외부 클라우드에 저장하지 않는다. */
+/** 표 한 줄에서 사람이 고칠 수 있는 칸들. 실제 시트 13열을 그 순서 그대로 담는다. */
 export type LabworkDraft = {
-  lab: string;          // 기공소 (A)
-  ordered_on: string;   // 의뢰 (C) — YYYY-MM-DD, 빈 문자열 허용
-  doctor: string;       // 의사 (E)
-  kind: string;         // 보철물 (F)
-  tooth: string;        // 치식 (G) — "16", "14,15,16" 처럼 여러 개일 수 있어 글자다
-  tooth_count: string;  // 치아개수 (H) — 화면에서는 글자로 다루고 저장할 때 숫자로 바꾼다
-  ab_count: string;     // AB개수 (I)
-  due_on: string;       // 예정일 (J)
-  note: string;         // 기타사항 (K)
-  arrived: boolean;     // 도착일(L)이 찍혔는지
-  oral_scan: boolean;   // M열 — 구강스캔인 경우에만 체크한다
+  lab: string;              // 기공소 (A)
+  patient_chart_no: string; // 등록번호 (B)
+  ordered_on: string;       // 의뢰 (C) — YYYY-MM-DD, 빈 문자열 허용
+  patient_name: string;     // 환자명 (D)
+  doctor: string;           // 의사 (E)
+  kind: string;             // 보철물 (F)
+  tooth: string;            // 치식 (G) — "16", "14,15,16" 처럼 여러 개일 수 있어 글자다
+  tooth_count: string;      // 치아개수 (H) — 화면에서는 글자로 다루고 저장할 때 숫자로 바꾼다
+  ab_count: string;         // AB개수 (I)
+  due_on: string;           // 예정일 (J)
+  note: string;             // 기타사항 = 비고 (K)
+  arrived_on: string;       // 도착일 (L) — 이 값이 있으면 도착한 것이다
+  oral_scan: boolean;       // 구강스캔 (M) — 해당하는 경우에만 체크
 };
 
 /** 어느 시트인지. 구조가 같아 한 표에 담고 화면에서 탭으로 나눈다. */
@@ -87,13 +88,14 @@ export const LABWORK_SCOPES: { key: LabworkScope; label: string; hint: string }[
 export type LabworkRecord = LabworkDraft & {
   id: string;
   seq: number;
-  arrived_on: string | null;
   updated_at: string;
 };
 
 export const EMPTY_DRAFT: LabworkDraft = {
   lab: "",
+  patient_chart_no: "",
   ordered_on: "",
+  patient_name: "",
   doctor: "",
   kind: "",
   tooth: "",
@@ -101,6 +103,10 @@ export const EMPTY_DRAFT: LabworkDraft = {
   ab_count: "",
   due_on: "",
   note: "",
-  arrived: false,
+  arrived_on: "",
   oral_scan: false,
 };
+
+// 내부시트는 기공실에서 만든다. 기공소 칸을 지우지 않고 이 값을 미리 채워 둔다 —
+// 두 시트의 열이 같아야 화면·붙여넣기·나중의 합산 통계가 한 벌로 끝난다.
+export const INTERNAL_LAB_NAME = "기공실";

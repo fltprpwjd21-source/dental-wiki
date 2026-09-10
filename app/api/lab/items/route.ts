@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
-import { EMPTY_DRAFT, type LabworkScope } from "@/lib/labwork/types";
+import { INTERNAL_LAB_NAME, type LabworkScope } from "@/lib/labwork/types";
 import { cleanDraft, LABWORK_SELECT } from "@/lib/labwork/draft";
 
 // 기공물 장부 시제품 — 목록 조회와 새 줄 추가.
@@ -57,14 +57,23 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("labwork_items")
       .insert(
-        drafts.map((draft) => ({
-          ...EMPTY_DRAFT,
-          ...cleanDraft(draft),
-          scope,
-          arrived_on: null,
-          created_by: session.employeeId,
-          updated_by: session.employeeId,
-        })),
+        // EMPTY_DRAFT 를 그대로 펼치지 않는다.
+        //   그건 화면 입력칸의 기본값이라 개수 칸이 빈 문자열("")인데,
+        //   DB 의 integer 열은 "" 를 못 받아 줄 추가가 통째로 500 이 된다.
+        //   빈 칸은 보내지 않고 DB 기본값에 맡긴다 — 화면 기본값과 DB 기본값은 다른 물건이다.
+        drafts.map((draft) => {
+          const clean = cleanDraft(draft);
+          return {
+            ...clean,
+            scope,
+            // 내부시트는 기공실에서 만든다. 칸을 없애는 대신 미리 채워 둔다 —
+            // 두 시트의 열이 같아야 화면·붙여넣기·나중의 합산 통계가 한 벌로 끝난다.
+            // 붙여넣기로 값이 함께 들어온 경우에는 그 값을 존중한다.
+            lab: (clean.lab as string) || (scope === "internal" ? INTERNAL_LAB_NAME : ""),
+            created_by: session.employeeId,
+            updated_by: session.employeeId,
+          };
+        }),
       )
       .select(LABWORK_SELECT);
 
