@@ -49,15 +49,21 @@ export function isPreviewableMimeType(mimeType: string | null | undefined): bool
 // 한 곳에서 관리한다. (accept 는 강제력이 없는 편의 기능이고, 강제는 서버가 한다)
 export const ACCEPT_ATTRIBUTE = ALLOWED_MIME_TYPES.join(",");
 
-// 50MB → 100MB (2026-09-08). 발표자료(PPT를 PDF로 내보낸 것)처럼 사진이 많이 들어간
-// 자료가 50MB를 넘기는 일이 생겨 올렸다. 무한정 올리지 않는 이유는 저장공간보다
+// 50MB 로 되돌렸다 (2026-09-10).
+//   2026-09-08 에 100MB 로 올렸었다 — 발표자료(PPT를 PDF로 내보낸 것)처럼 사진이 많이
+//   들어간 자료가 50MB를 넘기는 일이 있었기 때문이다. 그런데 Supabase 무료 플랜은
+//   파일 하나당 50MB 가 플랫폼 차원의 상한이라, 앱과 버킷만 100MB 로 올려두면 업로드가
+//   스토리지 단계에서 거부된다 — 사용자에게는 원인을 알 수 없는 실패로 보인다.
+//   셋(앱·버킷·플랫폼)이 어긋난 상태를 두느니 전부 50MB 로 맞춘다.
+//   100MB 가 실제로 필요해지면 Pro 플랜으로 올린 뒤 다시 판단한다.
+// 무한정 올리지 않는 이유는 저장공간보다
 // **전송량**이 먼저 바닥나기 때문이다 — 첨부는 /api/notes/{id}/content 가 바이트를 그대로
 // 흘려보내는 구조라, 한 번 열 때마다 Supabase 와 Vercel 양쪽에서 파일 크기만큼 전송량이
 // 발생한다(캐시는 60초짜리다). 큰 원본은 앱에 올리는 대신 링크로 두는 쪽이 맞다.
 //
 // 주의: 이 값을 바꾸면 스토리지 버킷의 file_size_limit 도 같이 올려야 한다.
 // 앱만 고치면 업로드가 스토리지 단계에서 거부된다 (supabase/migrations 의 storage_bucket 참고).
-export const FILE_MAX_SIZE_MB = Number(process.env.FILE_MAX_SIZE_MB ?? "100");
+export const FILE_MAX_SIZE_MB = Number(process.env.FILE_MAX_SIZE_MB ?? "50");
 export const FILE_MAX_SIZE_BYTES = FILE_MAX_SIZE_MB * 1024 * 1024;
 
 // 휴지통 항목은 이 기간이 지나면 크론이 자동으로 완전 삭제한다.
