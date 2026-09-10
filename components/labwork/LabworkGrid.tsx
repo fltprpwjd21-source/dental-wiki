@@ -68,6 +68,14 @@ function todayIso(): string {
   return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
+// 도착 체크에 붙일 날짜. 연도를 빼고 월/일만 쓴다.
+//   formatDate 는 해가 넘어가면 연도를 붙이는데(다시 읽어야 하므로), 이건 읽기만 하는
+//   글자라 그럴 필요가 없다.
+function formatArrivedDay(iso: string): string {
+  const [, m, d] = iso.split("-").map(Number);
+  return m && d ? `${m}/${d}` : iso;
+}
+
 function matches(row: LabworkRecord, query: string, fields: Set<SearchFieldKey>): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -733,7 +741,22 @@ export default function LabworkGrid({
                                 : saveCell(row, col.key as keyof LabworkDraft, e.target.checked)
                             }
                             onKeyDown={(e) => handleKeyDown(e, { row: rowIndex, col: colIndex })}
-                            aria-label={`${rowIndex + 1}번째 줄 ${col.label}`}
+                            // 도착 체크에는 언제 도착했는지를 손끝에 붙여 둔다.
+                            //   날짜를 칸으로 따로 두면 자리를 한 칸 더 쓰는데,
+                            //   그 날짜는 "이미 왔다"를 확인한 뒤에나 궁금해지는 값이다.
+                            //   연도는 뺀다 — 몇 달 안에 끝나는 일이라 연도가 붙으면 읽는 데 방해만 된다.
+                            title={
+                              col.key === ARRIVED_CHECK_KEY
+                                ? row.arrived_on
+                                  ? `도착 ${formatArrivedDay(row.arrived_on)}`
+                                  : "아직 안 왔습니다"
+                                : undefined
+                            }
+                            aria-label={
+                              col.key === ARRIVED_CHECK_KEY && row.arrived_on
+                                ? `${rowIndex + 1}번째 줄 도착 (${formatArrivedDay(row.arrived_on)})`
+                                : `${rowIndex + 1}번째 줄 ${col.label}`
+                            }
                             className={`h-3.5 w-3.5 ${
                               col.key === ARRIVED_CHECK_KEY
                                 ? "accent-[color:var(--done)]"

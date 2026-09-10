@@ -34,7 +34,12 @@ export const LABWORK_COLUMNS: LabworkColumn[] = [
   { key: "ab_count", label: "AB", kind: "number", width: "3.2rem", hideOnPhone: true },
   { key: "due_on", label: "예정일", kind: "date", width: "5rem" },
   { key: "note", label: "비고", kind: "text", width: "minmax(6rem, 1.2fr)", hideOnPhone: true },
-  { key: "arrived_on", label: "도착일", kind: "date", width: "5rem" },
+  // 이름을 「도착일」에서 「예정일」로 바꿨다 (2026-09-10 사용자 지시).
+  //   앞의 J열과 이름이 같아진다. 사용자가 그 점을 확인한 뒤 고른 것이다.
+  //
+  //   주의: 이 칸에 값이 들어가면 그 줄은 「도착 완료」로 취급되어 아래로 내려간다.
+  //   저장되는 값은 arrived_on 이고, 도착 체크·정렬·연한 하늘색이 모두 이 칸을 본다.
+  { key: "arrived_on", label: "예정일", kind: "date", width: "5rem" },
   // 구강스캔인 경우에만 체크한다. 글자로 두면 매번 손으로 치게 되고 오타가 집계에서 빠진다.
   { key: "oral_scan", label: "구강스캔", kind: "check", width: "4.5rem" },
   // 도착 확인용 체크. 저장되는 값은 앞의 「도착일」 하나뿐이다 —
