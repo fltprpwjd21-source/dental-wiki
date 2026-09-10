@@ -7,6 +7,11 @@ import { getServerSupabaseClient } from "@/lib/supabase/server";
 export type Session = {
   employeeId: string;
   isAdmin: boolean;
+  /**
+   * 표시용 실명. 화이트리스트에 이름이 비어 있는 옛 계정이면 null 이다.
+   * 화면에서는 lib/employee-names.ts 의 displayName 을 거쳐 쓴다 (2026-09-10 규칙).
+   */
+  name: string | null;
 };
 
 // 서버 컴포넌트/라우트에서 현재 로그인한 세션을 읽을 때 사용
@@ -27,7 +32,9 @@ export type Session = {
 // 합의하고 적용했다. DB 오류(네트워크 문제 등)는 캐싱하지 않는다 — 일시적 장애를
 // 30초짜리 로그아웃으로 굳히지 않기 위해서다.
 const WHITELIST_CACHE_TTL_MS = 30 * 1000;
-type WhitelistCacheEntry = { found: true; isAdmin: boolean; expiresAt: number } | { found: false; expiresAt: number };
+type WhitelistCacheEntry =
+  | { found: true; isAdmin: boolean; name: string | null; expiresAt: number }
+  | { found: false; expiresAt: number };
 const whitelistCache = new Map<string, WhitelistCacheEntry>();
 
 export const getSession = cache(async (): Promise<Session | null> => {
@@ -37,13 +44,15 @@ export const getSession = cache(async (): Promise<Session | null> => {
 
   const cached = whitelistCache.get(payload.employeeId);
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.found ? { employeeId: payload.employeeId, isAdmin: cached.isAdmin } : null;
+    return cached.found
+      ? { employeeId: payload.employeeId, isAdmin: cached.isAdmin, name: cached.name }
+      : null;
   }
 
   const supabase = getServerSupabaseClient();
   const { data: employee, error } = await supabase
     .from("employee_whitelist")
-    .select("is_admin")
+    .select("is_admin, name")
     .eq("employee_id", payload.employeeId)
     .maybeSingle();
 
@@ -59,7 +68,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
   whitelistCache.set(payload.employeeId, {
     found: true,
     isAdmin: employee.is_admin,
+    name: employee.name,
     expiresAt: Date.now() + WHITELIST_CACHE_TTL_MS,
   });
-  return { employeeId: payload.employeeId, isAdmin: employee.is_admin };
+  return { employeeId: payload.employeeId, isAdmin: employee.is_admin, name: employee.name };
 });

@@ -8,6 +8,8 @@ import MarkdownView from "@/components/notes/MarkdownView";
 import NoticeRowActions from "@/components/notices/NoticeRowActions";
 import NoticeAck from "@/components/notices/NoticeAck";
 import { markNoticeRead } from "@/lib/notices-server";
+import { displayName } from "@/lib/employee-names";
+import { fetchEmployeeNames } from "@/lib/employee-names-server";
 
 // 공지 상세 — 카드를 누르면 그냥 공지가 열린다.
 //
@@ -60,6 +62,14 @@ export default async function NoticePage({
   // 열어본 것만으로 읽음으로 친다 — 따로 누르는 버튼은 없다.
   // needs_ack 는 아래 「읽은 사람 N명」 띠를 띄울지 정하는 스위치일 뿐이다.
   await markNoticeRead(notice.id, session.employeeId);
+
+  // author_name 은 올린 시점의 스냅샷이다. 그 뒤 개명·오타 수정이 있었으면 옛 이름이
+  // 남으므로, 화이트리스트에 아직 있는 사람은 지금 이름으로 보여준다.
+  const authorName = displayName(
+    notice.author_id,
+    (await fetchEmployeeNames([notice.author_id])).get(notice.author_id),
+    notice.author_name,
+  );
 
   const canEdit = notice.author_id === session.employeeId || session.isAdmin;
 
@@ -116,7 +126,7 @@ export default async function NoticePage({
           </h1>
           <div className="mt-3 flex flex-wrap gap-1.5">
             <span className="border border-hair bg-l-cal px-2.5 py-0.5 text-[10.5px] text-ink-2">
-              {notice.author_name ?? notice.author_id}
+              {authorName}
             </span>
             <span className="border border-hair bg-l-cal px-2.5 py-0.5 text-[10.5px] text-ink-2">
               게시 {notice.starts_on.slice(5)} ~ {notice.ends_on.slice(5)}

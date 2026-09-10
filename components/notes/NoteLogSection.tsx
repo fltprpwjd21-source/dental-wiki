@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { displayName } from "@/lib/employee-names";
 
 // 노트 맨 아래에 붙는 "누가 언제 무엇을 했는지" 기록.
 //
@@ -85,8 +86,7 @@ export default function NoteLogSection({ nodeId, version }: { nodeId: string; ve
             <li key={log.id} className="flex flex-wrap items-baseline gap-x-2 text-xs">
               <span className="font-mono tabular-nums text-gray-400">{formatWhen(log.createdAt)}</span>
               <span className="text-ink">
-                {log.actor}
-                {log.actorName && <span className="text-gray-500"> {log.actorName}</span>}
+                {displayName(log.actor, log.actorName)}
               </span>
               <span className="text-gray-500">{ACTION_LABEL[log.action] ?? log.action}</span>
             </li>

@@ -3,6 +3,7 @@ import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/uuid";
 import { visibleDocumentLogs } from "@/lib/document-logs";
+import { fetchEmployeeNames } from "@/lib/employee-names-server";
 
 // PLAN 10번: "수정 로그 보기"를 펼쳤을 때 보여줄 이력 조회
 export async function GET(
@@ -28,6 +29,18 @@ export async function GET(
     }
 
     // 무엇을 보여줄지의 규칙은 lib/document-logs.ts 에 있다 (그 파일의 주석 참고).
-    return NextResponse.json({ logs: visibleDocumentLogs(logs ?? []) });
+    const shown = visibleDocumentLogs(logs ?? []);
+
+    // 사원번호만 찍으면 그게 누구인지 알 수 없다. 화면은 실명으로 보여준다
+    // (2026-09-10 규칙 — lib/employee-names.ts 주석 참고).
+    // document_logs 에는 당시 이름 스냅샷이 없으므로 화이트리스트에서 읽은 값이 전부다.
+    const names = await fetchEmployeeNames(shown.map((log) => log.edited_by as string));
+
+    return NextResponse.json({
+      logs: shown.map((log) => ({
+        ...log,
+        edited_by_name: names.get(log.edited_by as string) ?? null,
+      })),
+    });
   });
 }

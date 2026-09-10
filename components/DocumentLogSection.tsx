@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { displayName } from "@/lib/employee-names";
 
 const ACTION_LABELS: Record<string, string> = {
   create: "최초 등록",
@@ -17,6 +18,8 @@ type LogEntry = {
   new_title: string;
   new_content: string;
   edited_by: string;
+  /** 화이트리스트에서 읽은 지금 이름. 퇴사해서 계정이 지워졌으면 없다. */
+  edited_by_name: string | null;
   edited_at: string;
 };
 
@@ -128,8 +131,8 @@ export default function DocumentLogSection({
                 className="rounded border border-gray-100 p-3 text-xs text-gray-600"
               >
                 <p className="mb-1 text-gray-500">
-                  {new Date(log.edited_at).toLocaleString("ko-KR")} · {log.edited_by} ·{" "}
-                  {ACTION_LABELS[log.action]}
+                  {new Date(log.edited_at).toLocaleString("ko-KR")} ·{" "}
+                  {displayName(log.edited_by, log.edited_by_name)} · {ACTION_LABELS[log.action]}
                 </p>
 
                 {titleChanged ? (

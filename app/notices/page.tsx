@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { NOTICE_DOT_DARK, NOTICE_LABELS, todayIso, type Notice } from "@/lib/notices";
 import NoticeRowActions from "@/components/notices/NoticeRowActions";
+import { displayName } from "@/lib/employee-names";
+import { fetchEmployeeNames } from "@/lib/employee-names-server";
 
 // 공지 탭 — 목록이 쭉 나오고, 오른쪽 위에 「공지 작성」.
 // 게시 기간이 끝난 공지는 지우지 않고 흐리게 남긴다 ("9월에 뭐라고 공지했었지"를 찾아야 한다).
@@ -20,6 +22,11 @@ export default async function NoticesPage() {
 
   const notices = (data ?? []) as Notice[];
   const today = todayIso();
+
+  // author_name 은 공지를 올린 시점에 저장해 둔 스냅샷이다. 그 뒤 개명하거나 오타를
+  // 고쳐도 옛 공지에는 반영되지 않으므로, 화이트리스트에 아직 있는 사람은 지금 이름으로
+  // 보여준다 (lib/employee-names.ts 의 displayName 규칙).
+  const names = await fetchEmployeeNames(notices.map((n) => n.author_id));
 
   return (
     <main className="flex-1 bg-l-card">
@@ -73,7 +80,8 @@ export default async function NoticesPage() {
                       </span>
                     )}
                     <span className="mt-0.5 block font-mono text-[10.5px] text-ink-3">
-                      {notice.author_name ?? notice.author_id} · {notice.created_at.slice(5, 10)}
+                      {displayName(notice.author_id, names.get(notice.author_id), notice.author_name)}{" "}
+                      · {notice.created_at.slice(5, 10)}
                     </span>
                   </span>
                   <span className="col-start-3 justify-self-end sm:col-start-4">

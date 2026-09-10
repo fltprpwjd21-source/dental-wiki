@@ -5,6 +5,7 @@ import { deleteStorageObject } from "@/lib/file-storage";
 import { TRASH_RETENTION_DAYS } from "@/lib/file-rules";
 import { isUuid } from "@/lib/uuid";
 import type { NodeType } from "@/lib/notes/tree";
+import { fetchEmployeeNames } from "@/lib/employee-names-server";
 
 // 관리자 휴지통. 노트 화면의 "최근 삭제된 항목"이 본인 것만 보여주는 것과 달리,
 // 여기서는 전 스탭이 버린 것을 전부 보고 직접 비울 수 있다.
@@ -18,30 +19,32 @@ export async function GET() {
     }
 
     const supabase = getServerSupabaseClient();
-    const [nodesResult, peopleResult] = await Promise.all([
-      supabase
-        .from("nodes")
-        .select("id, parent_id, type, name, size_bytes, created_by, trashed_by, trashed_at")
-        .eq("status", "trashed")
-        .order("trashed_at", { ascending: false }),
-      supabase.from("employee_whitelist").select("employee_id, name"),
-    ]);
+    const nodesResult = await supabase
+      .from("nodes")
+      .select("id, parent_id, type, name, size_bytes, created_by, trashed_by, trashed_at")
+      .eq("status", "trashed")
+      .order("trashed_at", { ascending: false });
 
     if (nodesResult.error) {
       return NextResponse.json({ error: "휴지통 목록을 불러오지 못했습니다." }, { status: 500 });
     }
 
-    const nameOf = new Map(
-      (peopleResult.data ?? []).map((p) => [p.employee_id as string, p.name as string | null]),
+    // 올린 사람·버린 사람 모두 실명으로 보여준다 (2026-09-10 규칙).
+    const rows = nodesResult.data ?? [];
+    const nameOf = await fetchEmployeeNames(
+      rows.flatMap((row) => [row.created_by as string, row.trashed_by as string | null])
+        .filter((id): id is string => typeof id === "string"),
     );
 
-    const nodes = (nodesResult.data ?? []).map((row) => {
+    const nodes = rows.map((row) => {
       const trashedAt = new Date(row.trashed_at as string);
       const purgeAt = new Date(trashedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
       return {
         ...row,
-        // 화이트리스트에서 지워진 사람이 버린 항목도 남아 있을 수 있다 — 그때는 이름이 없다.
+        // 화이트리스트에서 지워진 사람이 버린 항목도 남아 있을 수 있다 — 그때는 이름이 없고
+        // 화면이 사원번호로 떨어진다 (lib/employee-names.ts 의 displayName).
         trashedByName: row.trashed_by ? nameOf.get(row.trashed_by as string) ?? null : null,
+        createdByName: nameOf.get(row.created_by as string) ?? null,
         purgeAt: purgeAt.toISOString(),
       };
     });

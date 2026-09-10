@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { displayName } from "@/lib/employee-names";
 
 // 관리자 휴지통. 전 스탭이 버린 것을 전부 보고 직접 비운다.
 //
@@ -13,6 +14,7 @@ type TrashNode = {
   name: string;
   size_bytes: number | null;
   created_by: string;
+  createdByName: string | null;
   trashed_by: string | null;
   trashedByName: string | null;
   trashed_at: string;
@@ -198,8 +200,7 @@ export default function AdminTrashPanel({
                 <td className="max-w-[16rem] truncate py-2 text-ink">{node.name}</td>
                 <td className="py-2 text-gray-500">{TYPE_LABEL[node.type]}</td>
                 <td className="py-2 text-gray-500">
-                  {node.trashed_by ?? "-"}
-                  {node.trashedByName && <span className="ml-1">{node.trashedByName}</span>}
+                  {node.trashed_by ? displayName(node.trashed_by, node.trashedByName) : "-"}
                 </td>
                 <td className="py-2 font-mono text-xs tabular-nums text-gray-500">
                   {formatWhen(node.trashed_at)}

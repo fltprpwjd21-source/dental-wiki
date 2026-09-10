@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { TRASH_RETENTION_DAYS } from "@/lib/file-rules";
 import AdminTrashPanel from "@/components/AdminTrashPanel";
+import { fetchEmployeeNames } from "@/lib/employee-names-server";
 
 // 관리자 휴지통.
 //
@@ -23,24 +24,26 @@ export default async function AdminTrashPage() {
   }
 
   const supabase = getServerSupabaseClient();
-  const [nodesResult, peopleResult] = await Promise.all([
-    supabase
-      .from("nodes")
-      .select("id, type, name, size_bytes, created_by, trashed_by, trashed_at")
-      .eq("status", "trashed")
-      .order("trashed_at", { ascending: false }),
-    supabase.from("employee_whitelist").select("employee_id, name"),
-  ]);
+  const nodesResult = await supabase
+    .from("nodes")
+    .select("id, type, name, size_bytes, created_by, trashed_by, trashed_at")
+    .eq("status", "trashed")
+    .order("trashed_at", { ascending: false });
 
-  const nameOf = new Map(
-    (peopleResult.data ?? []).map((p) => [p.employee_id as string, p.name as string | null]),
+  // 올린 사람·버린 사람 모두 실명으로 보여준다 (2026-09-10 규칙, lib/employee-names.ts).
+  const rows = nodesResult.data ?? [];
+  const nameOf = await fetchEmployeeNames(
+    rows
+      .flatMap((row) => [row.created_by as string, row.trashed_by as string | null])
+      .filter((id): id is string => typeof id === "string"),
   );
 
-  const nodes = (nodesResult.data ?? []).map((row) => {
+  const nodes = rows.map((row) => {
     const trashedAt = new Date(row.trashed_at as string);
     const purgeAt = new Date(trashedAt.getTime() + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     return {
       ...row,
+      createdByName: nameOf.get(row.created_by as string) ?? null,
       trashedByName: row.trashed_by ? nameOf.get(row.trashed_by as string) ?? null : null,
       purgeAt: purgeAt.toISOString(),
     };

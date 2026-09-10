@@ -3,6 +3,7 @@ import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/uuid";
 import { visibleNoteLogs } from "@/lib/note-logs";
+import { fetchEmployeeNames } from "@/lib/employee-names-server";
 
 // 노트 하단에 보여줄 "누가 언제 무엇을 했는지" 기록.
 //
@@ -39,15 +40,7 @@ export async function GET(
 
     const shown = visibleNoteLogs(logs ?? []);
 
-    const actors = [...new Set(shown.map((l) => l.actor as string))];
-    const { data: people } = await supabase
-      .from("employee_whitelist")
-      .select("employee_id, name")
-      .in("employee_id", actors.length > 0 ? actors : [""]);
-
-    const nameOf = new Map(
-      (people ?? []).map((p) => [p.employee_id as string, p.name as string | null]),
-    );
+    const nameOf = await fetchEmployeeNames(shown.map((l) => l.actor as string));
 
     return NextResponse.json({
       logs: shown.map((log) => ({
