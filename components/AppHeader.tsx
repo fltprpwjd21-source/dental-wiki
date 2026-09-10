@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth";
 import HeaderSearch from "@/components/HeaderSearch";
 import LogoutButton from "@/components/LogoutButton";
 import AppTabs from "@/components/AppTabs";
+import { displayName } from "@/lib/employee-names";
+import { countPendingActions } from "@/lib/tasks-server";
 
 // 층 1·2 — 화면에서 어두운 곳은 여기와 공지 카드뿐이다.
 //
@@ -12,6 +14,8 @@ import AppTabs from "@/components/AppTabs";
 // 어디에 쳐야 하나를 매번 고민하게 된다.
 export default async function AppHeader() {
   const session = await getSession();
+  // 「업무지시」 탭 배지. 실패해도 0 이라 배지만 안 뜬다 (countPendingActions 주석 참고).
+  const taskBadge = session ? await countPendingActions(session.employeeId) : 0;
 
   return (
     <header>
@@ -37,7 +41,7 @@ export default async function AppHeader() {
               {/* 좁은 화면: 로고와 같은 줄 오른쪽 끝 → 검색창은 둘째 줄 전체 폭 */}
               <div className="order-1 ml-auto flex items-center gap-3 text-[11px] text-white/60 md:order-2">
                 <span className="whitespace-nowrap">
-                  {session.employeeId}
+                  {displayName(session.employeeId, session.name)}
                   {session.isAdmin ? " (관리자)" : ""}
                 </span>
                 <LogoutButton />
@@ -56,7 +60,7 @@ export default async function AppHeader() {
         </div>
       </div>
 
-      {session && <AppTabs />}
+      {session && <AppTabs taskBadge={taskBadge} />}
     </header>
   );
 }

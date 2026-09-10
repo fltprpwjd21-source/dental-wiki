@@ -50,3 +50,6 @@ trash-can/
 
 # git worktree 작업 폴더 (커밋 대상이 아니다 — 안에 .next 빌드 산출물까지 들어 있다)
 /.claude/worktrees/
+
+# 개인용 Claude Code 권한 설정 (이 저장소는 공개라 커밋하지 않는다)
+/.claude/settings.local.json
