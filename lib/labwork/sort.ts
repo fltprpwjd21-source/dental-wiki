@@ -42,9 +42,18 @@ export function compareLabwork(a: SortableRow, b: SortableRow): number {
     return b.seq - a.seq;
   }
 
-  // 3. 안 온 것끼리는 의뢰일 순.
-  //    의뢰일이 빈 줄은 맨 위에 둔다 — 방금 만들어 아직 아무것도 안 적은 줄이라,
-  //    지금 손대야 할 줄이다. 아래로 보내면 새 줄을 만들 때마다 찾아 내려가야 한다.
+  // 3. 안 온 것끼리도 최근 의뢰가 위다 (2026-09-10 뒤집음).
+  //
+  //    처음에는 오래된 것을 위에 뒀다 — "오래 기다린 것이 곧 올 확률이 높다"는 이유였다.
+  //    그런데 새 줄을 만들어 오늘 날짜를 적는 순간 그 줄이 맨 아래로 내려가 버렸다.
+  //    방금 만든 줄이 눈앞에서 사라지는 것은 실제로 겪는 불편이고,
+  //    "곧 올 것부터 본다"는 이득은 훑어보면 되는 정도다.
+  //
+  //    덕분에 완료 구간과 방향이 같아졌다 — 표 전체가 위에서 아래로 최근 → 오래된 순이다.
+  //    방향이 중간에 뒤집히면 매번 어느 쪽이 최근인지 다시 생각하게 된다.
+  //
+  //    의뢰일이 빈 줄은 여전히 맨 위다. 방금 만들어 아직 아무것도 안 적은 줄이라
+  //    지금 손대야 할 줄이고, 날짜를 적으면 바로 아래 제자리로 들어간다.
   const aNew = !a.ordered_on;
   const bNew = !b.ordered_on;
   if (aNew !== bNew) return aNew ? -1 : 1;
@@ -52,8 +61,8 @@ export function compareLabwork(a: SortableRow, b: SortableRow): number {
 
   const ao = a.ordered_on ?? LAST;
   const bo = b.ordered_on ?? LAST;
-  if (ao !== bo) return ao < bo ? -1 : 1;
-  return a.seq - b.seq;
+  if (ao !== bo) return ao < bo ? 1 : -1;
+  return b.seq - a.seq;
 }
 
 export function sortLabwork<T extends SortableRow>(rows: T[]): T[] {

@@ -669,6 +669,11 @@ export default function LabworkGrid({
 
           {visible.map((row, rowIndex) => {
             const picked = selected.has(row.id);
+            // 안 온 것과 끝난 것 사이에 얇은 선을 하나 긋는다.
+            //   색만으로도 갈리지만, 훑어 내릴 때 "여기부터는 끝난 것"이 어디서 시작하는지
+            //   눈이 한 번에 잡히지 않는다. 경계는 선 하나가 제일 빠르다.
+            const startsDone =
+              Boolean(row.arrived_on) && !visible[rowIndex - 1]?.arrived_on && rowIndex > 0;
             // 도착이 끝난 줄은 아주 연한 하늘색으로 눕는다. 훑어 내릴 때 한눈에 갈린다.
             // 고른 줄은 그보다 세게 표시해야 하므로 고르기가 이긴다.
             const done = Boolean(row.arrived_on);
@@ -677,7 +682,9 @@ export default function LabworkGrid({
                 key={row.id}
                 className={`grid border-b border-hair text-[12.5px] last:border-b-0 ${
                   picked ? "bg-l-cal" : done ? "bg-l-done hover:bg-l-cal" : "hover:bg-l-cal"
-                } ${moved === row.id ? "ring-1 ring-inset ring-sched" : ""}`}
+                } ${startsDone ? "border-t border-t-hair-2" : ""} ${
+                  moved === row.id ? "ring-1 ring-inset ring-sched" : ""
+                }`}
                 style={{ gridTemplateColumns: template }}
               >
                 <label className="flex cursor-pointer items-center justify-center">
