@@ -31,18 +31,33 @@ describe("기공물 줄 세우기", () => {
     assert.deepEqual(ids([늦게, 먼저]), ["먼저", "늦게"]);
   });
 
-  test("끝난 것끼리는 도착한 순서로 쌓인다 (방금 체크한 것이 맨 아래)", () => {
-    const 어제 = row({ id: "어제", ordered_on: "2026-09-01", arrived_on: "2026-09-09" });
-    const 오늘 = row({ id: "오늘", ordered_on: "2026-09-01", arrived_on: "2026-09-10" });
-    assert.deepEqual(ids([오늘, 어제]), ["어제", "오늘"]);
+  test("끝난 것끼리도 의뢰일이 먼저다 — 오래된 의뢰가 아래", () => {
+    // 도착일로 세우면 의뢰일이 뒤죽박죽 섞여 보인다. 실제로 그렇게 보여서 고쳤다.
+    const 오래된의뢰 = row({ id: "오래된의뢰", ordered_on: "2026-08-16", arrived_on: "2026-09-05" });
+    const 최근의뢰 = row({ id: "최근의뢰", ordered_on: "2026-09-02", arrived_on: "2026-09-10" });
+    assert.deepEqual(ids([오래된의뢰, 최근의뢰]), ["최근의뢰", "오래된의뢰"]);
   });
 
-  test("같은 날 도착한 것끼리는 나중에 손댄 것이 아래", () => {
+  test("한참 늦게 완성돼도 자기 의뢰일 자리로 들어간다", () => {
+    // 같은 날 의뢰한 둘 중 하나가 미뤄져 나중에 체크돼도, 의뢰일이 기준이다.
+    const 늦게완성 = row({ id: "늦게완성", ordered_on: "2026-08-20", arrived_on: "2026-09-10" });
+    const 중간의뢰 = row({ id: "중간의뢰", ordered_on: "2026-08-25", arrived_on: "2026-08-26" });
+    const 최근의뢰 = row({ id: "최근의뢰", ordered_on: "2026-09-01", arrived_on: "2026-09-02" });
+    assert.deepEqual(ids([늦게완성, 최근의뢰, 중간의뢰]), ["최근의뢰", "중간의뢰", "늦게완성"]);
+  });
+
+  test("같은 의뢰일 안에서는 늦게 완성된 것이 위", () => {
+    const 먼저완성 = row({ id: "먼저완성", ordered_on: "2026-09-01", arrived_on: "2026-09-03" });
+    const 늦게완성 = row({ id: "늦게완성", ordered_on: "2026-09-01", arrived_on: "2026-09-09" });
+    assert.deepEqual(ids([먼저완성, 늦게완성]), ["늦게완성", "먼저완성"]);
+  });
+
+  test("같은 날 도착한 것끼리는 나중에 체크한 것이 위", () => {
     // 도착일은 날짜뿐이라 오늘 체크한 것들이 전부 같은 값이 된다.
     // 시각으로 안 가르면 방금 누른 줄이 어디로 갔는지 매번 달라진다.
-    const 먼저 = row({ id: "먼저", arrived_on: "2026-09-10", updated_at: "2026-09-10T01:00:00Z" });
-    const 나중 = row({ id: "나중", arrived_on: "2026-09-10", updated_at: "2026-09-10T05:00:00Z" });
-    assert.deepEqual(ids([나중, 먼저]), ["먼저", "나중"]);
+    const 먼저 = row({ id: "먼저", ordered_on: "2026-09-01", arrived_on: "2026-09-10", updated_at: "2026-09-10T01:00:00Z" });
+    const 나중 = row({ id: "나중", ordered_on: "2026-09-01", arrived_on: "2026-09-10", updated_at: "2026-09-10T05:00:00Z" });
+    assert.deepEqual(ids([먼저, 나중]), ["나중", "먼저"]);
   });
 
   test("의뢰일이 빈 줄은 맨 위에 둔다 (방금 만든 줄이라 지금 손댈 줄이다)", () => {

@@ -106,6 +106,7 @@ export default function LabworkGrid({
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
 
   // 찾는 중에는 보이는 줄만 다룬다. 아래 모든 자리(그리기·키보드 이동·붙여넣기)가
   // 이 목록 하나를 본다 — 원래 목록과 섞어 쓰면 3번째 줄이 서로 다른 줄을 가리킨다.
@@ -123,6 +124,26 @@ export default function LabworkGrid({
   useEffect(() => {
     if (active) inputRef.current?.focus();
   }, [active]);
+
+  // 세부검색을 열어 두고 딴 데를 누르면 닫는다.
+  //   열어 둔 채로 표를 만지면 그 창이 칸을 가린다. 스스로 닫히지 않는 창은
+  //   "닫는 방법을 찾는" 일을 사람에게 떠넘기는 것이다.
+  //   Esc 로도 닫는다 — 창을 닫는 가장 흔한 손버릇이다.
+  useEffect(() => {
+    if (!filterOpen) return;
+    function onDown(e: MouseEvent) {
+      if (!filterRef.current?.contains(e.target as Node)) setFilterOpen(false);
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") setFilterOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [filterOpen]);
 
   const pushUndo = useCallback((entry: UndoEntry) => {
     setUndoStack((prev) => [...prev, entry].slice(-UNDO_LIMIT));
@@ -477,7 +498,7 @@ export default function LabworkGrid({
 
         {/* 세부검색 — 어느 칸에서 찾을지 고른다.
             항목을 검색칸 옆에 늘어놓으면 표보다 자리를 더 차지하므로 깔때기 안에 접어 둔다. */}
-        <div className="relative">
+        <div className="relative" ref={filterRef}>
           <button
             type="button"
             onClick={() => setFilterOpen((v) => !v)}

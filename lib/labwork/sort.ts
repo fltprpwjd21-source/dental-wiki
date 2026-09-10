@@ -23,12 +23,23 @@ export function compareLabwork(a: SortableRow, b: SortableRow): number {
   if (aDone !== bDone) return aDone - bDone;
 
   if (aDone === 1) {
-    // 2. 끝난 것끼리는 도착한 순서로 쌓인다 — 먼저 온 것이 위, 방금 체크한 것이 맨 아래.
+    // 2. 끝난 것끼리는 「의뢰일」이 먼저다 (2026-09-10 사용자 결정).
+    //
+    //    도착일로 세우면 의뢰일이 뒤죽박죽 섞인다 — 실제로 그렇게 보였다.
+    //    같은 날 의뢰한 둘 중 하나가 한참 늦게 완성돼 나중에 체크되더라도,
+    //    그 줄은 자기 의뢰일 자리로 들어가야 한다.
+    //
+    //    방향은 안 온 것과 반대다. 오래된 의뢰가 아래로 내려간다 —
+    //    끝난 일은 오래될수록 볼 일이 없으므로 멀리 밀어 둔다.
+    const ao = a.ordered_on ?? "";
+    const bo = b.ordered_on ?? "";
+    if (ao !== bo) return ao < bo ? 1 : -1;
+
+    //    같은 의뢰일 안에서는 늦게 완성된 것이 위다 — 방금 끝낸 것이 눈에 가깝다.
+    if (a.arrived_on !== b.arrived_on) return (a.arrived_on ?? "") < (b.arrived_on ?? "") ? 1 : -1;
     //    도착일은 날짜뿐이라 같은 날이 여럿이다. 그때는 마지막으로 손댄 시각으로 가른다.
-    //    안 그러면 오늘 체크한 것들끼리 순서가 매번 달라져, 방금 누른 줄이 어디 갔는지 모른다.
-    if (a.arrived_on !== b.arrived_on) return (a.arrived_on ?? "") < (b.arrived_on ?? "") ? -1 : 1;
-    if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? -1 : 1;
-    return a.seq - b.seq;
+    if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? 1 : -1;
+    return b.seq - a.seq;
   }
 
   // 3. 안 온 것끼리는 의뢰일 순.
