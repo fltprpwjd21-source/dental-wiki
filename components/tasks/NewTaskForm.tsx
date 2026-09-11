@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FILE_MAX_SIZE_MB, isAllowedExtension, isOversized } from "@/lib/file-rules";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
 import type { FlatNode } from "@/lib/notes/tree";
+import type { TaskKind } from "@/lib/tasks";
 import type { Colleague } from "@/lib/tasks-server";
 import ArchivePicker from "@/components/tasks/ArchivePicker";
 import FileDropZone from "@/components/tasks/FileDropZone";
@@ -23,18 +24,19 @@ export default function NewTaskForm({
   colleagues,
   archiveNodes,
   currentEmployeeId,
+  kind,
 }: {
   colleagues: Colleague[];
   archiveNodes: FlatNode[];
   currentEmployeeId: string;
+  /** 지시인지 보고인지. 탭이 정하고 화면 안에서는 바뀌지 않는다 (2026-09-11). */
+  kind: TaskKind;
 }) {
   const router = useRouter();
-
-  const [open, setOpen] = useState(false);
+  const isReport = kind === "report";
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [dueOn, setDueOn] = useState("");
-  const [isLongterm, setIsLongterm] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [sourceId, setSourceId] = useState<string | null>(null);
@@ -57,6 +59,11 @@ export default function NewTaskForm({
   }, [candidates, search]);
 
   function toggle(employeeId: string) {
+    // 보고를 받는 사람은 한 명이다 — 고르면 앞의 선택을 밀어낸다.
+    if (kind === "report") {
+      setPicked((prev) => (prev[0] === employeeId ? [] : [employeeId]));
+      return;
+    }
     setPicked((prev) =>
       prev.includes(employeeId) ? prev.filter((id) => id !== employeeId) : [...prev, employeeId],
     );
@@ -86,7 +93,6 @@ export default function NewTaskForm({
     setTitle("");
     setBody("");
     setDueOn("");
-    setIsLongterm(false);
     setPicked([]);
     setSearch("");
     setSourceId(null);
@@ -131,7 +137,7 @@ export default function NewTaskForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    setBusy("지시 등록 중...");
+    setBusy(kind === "report" ? "보고 등록 중..." : "지시 등록 중...");
 
     try {
       const response = await fetch("/api/tasks", {
@@ -140,8 +146,12 @@ export default function NewTaskForm({
         body: JSON.stringify({
           title,
           body,
+          kind,
           dueOn: dueOn || null,
-          isLongterm,
+          // 장기 업무 여부를 더 묻지 않는다 (2026-09-11). 고르는 사람마다 기준이 달라
+          // 같은 성격의 업무가 어떤 건 진행률이 있고 어떤 건 없었다. 이제 전부 진행률을
+          // 쓰고, 짧은 일은 0 에서 100 으로 한 번에 올리면 된다.
+          isLongterm: true,
           assigneeIds: picked,
           sourceNodeId: sourceId,
         }),
@@ -163,34 +173,22 @@ export default function NewTaskForm({
       }
 
       if (failed.length > 0) {
-        setError(`지시는 등록됐지만 첨부에 문제가 있습니다 — ${failed[0]}`);
+        setError(`${isReport ? "보고는" : "지시는"} 등록됐지만 첨부에 문제가 있습니다 — ${failed[0]}`);
         setFiles([]);
         router.refresh();
         return;
       }
 
+      // 작성 전용 탭이라 등록하고 나면 여기 남아 있을 이유가 없다. 방금 만든 것이
+      // 보이는 「내 업무」로 보낸다 (2026-09-11).
       reset();
-      setOpen(false);
+      router.push("/tasks/mine");
       router.refresh();
     } catch {
       setError("등록 중 오류가 발생했습니다.");
     } finally {
       setBusy(null);
     }
-  }
-
-  if (!open) {
-    return (
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="border border-navy bg-navy px-3 py-1.5 text-[11.5px] text-white hover:bg-head"
-        >
-          업무 지시하기
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -269,7 +267,9 @@ export default function NewTaskForm({
               id="task-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={5}
+              // 지시문은 보통 여러 줄이다. 다섯 줄짜리 칸은 쓰는 동안 위가 계속 밀려
+              // 올라가 앞에 뭘 썼는지 보이지 않았다 (2026-09-11).
+              rows={14}
               className="w-full border border-hair-2 bg-l-card px-2.5 py-1.5 text-[13px] leading-relaxed text-ink"
             />
           </div>
@@ -277,14 +277,16 @@ export default function NewTaskForm({
           <div>
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="text-[10.5px] text-ink-2">
-                담당자 {picked.length > 0 && `(${picked.length}명)`}
+                {isReport
+                  ? "보고 받을 사람 (한 명)"
+                  : `담당자 ${picked.length > 0 ? `(${picked.length}명)` : ""}`}
               </span>
               <input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="이름 검색"
-                aria-label="담당자 이름 검색"
+                aria-label={isReport ? "보고 받을 사람 이름 검색" : "담당자 이름 검색"}
                 className="w-24 border border-hair-2 bg-l-card px-2 py-1 text-[11px] text-ink"
               />
             </div>
@@ -298,7 +300,8 @@ export default function NewTaskForm({
                     className="flex cursor-pointer items-center gap-2 border-b border-hair px-2.5 py-1.5 text-[12px] last:border-b-0 hover:bg-l-cal"
                   >
                     <input
-                      type="checkbox"
+                      type={isReport ? "radio" : "checkbox"}
+                      name={isReport ? "task-report-target" : undefined}
                       checked={picked.includes(c.employeeId)}
                       onChange={() => toggle(c.employeeId)}
                       className="h-3.5 w-3.5 accent-navy"
@@ -311,7 +314,9 @@ export default function NewTaskForm({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-end gap-4">
+          {/* 마감일과 진행률은 앞으로 할 일에 붙는 값이다. 보고는 이미 한 일을 올리는
+              것이라 둘 다 물을 것이 없다 — 칸을 비워두느니 감춘다. */}
+          <div className={`flex flex-wrap items-end gap-4 ${isReport ? "hidden" : ""}`}>
             <div>
               <label htmlFor="task-due" className="mb-1 block text-[10.5px] text-ink-2">
                 마감일
@@ -325,15 +330,6 @@ export default function NewTaskForm({
               />
             </div>
 
-            <label className="flex cursor-pointer items-center gap-1.5 pb-1.5 text-[11.5px] text-ink-2">
-              <input
-                type="checkbox"
-                checked={isLongterm}
-                onChange={(e) => setIsLongterm(e.target.checked)}
-                className="h-3.5 w-3.5 accent-navy"
-              />
-              장기 업무 (진행률 표시)
-            </label>
           </div>
         </div>
       </div>
@@ -350,13 +346,13 @@ export default function NewTaskForm({
           disabled={busy !== null}
           className="border border-navy bg-navy px-3 py-1.5 text-[11.5px] text-white hover:bg-head disabled:opacity-50"
         >
-          {busy ?? "지시하기"}
+          {busy ?? (isReport ? "보고하기" : "지시하기")}
         </button>
         <button
           type="button"
           onClick={() => {
             reset();
-            setOpen(false);
+            router.push("/tasks");
           }}
           disabled={busy !== null}
           className="border border-hair-2 px-3 py-1.5 text-[11.5px] text-ink-2 hover:bg-l-cal disabled:opacity-50"

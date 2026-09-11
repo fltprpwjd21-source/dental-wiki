@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { TASK_STATUS_LABELS, type TaskStatus } from "@/lib/tasks";
+import {
+  TASK_KIND_LABELS,
+  TASK_RETURN_LABELS,
+  TASK_STATUS_LABELS,
+  type TaskStatus,
+} from "@/lib/tasks";
 import type { TaskCard } from "@/lib/tasks-server";
 
 // 상태 뱃지 색. 병원 색(파랑) 안에서 고르되 「완료 확인 대기」만 주황으로 뺀다 —
@@ -50,13 +55,24 @@ function Card({ task, side }: { task: TaskCard; side: "given" | "received" }) {
             {TASK_STATUS_LABELS[task.status]}
           </span>
 
+          {task.kind === "report" && (
+            <span className="shrink-0 border border-hair-2 px-1.5 py-px text-[9.5px] text-ink-2">
+              {TASK_KIND_LABELS.report}
+            </span>
+          )}
           {needsAck && (
             <span className="shrink-0 border border-amber bg-amber px-1.5 py-px text-[9.5px] text-white">
               미확인
             </span>
           )}
-          {task.rejected && (
-            <span className="shrink-0 border border-late px-1.5 py-px text-[9.5px] text-late">반려됨</span>
+          {task.returned && (
+            <span
+              className={`shrink-0 border px-1.5 py-px text-[9.5px] ${
+                task.returned === "reject" ? "border-late text-late" : "border-amber text-amber"
+              }`}
+            >
+              {TASK_RETURN_LABELS[task.returned]}
+            </span>
           )}
 
           <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{task.title}</span>
@@ -69,20 +85,23 @@ function Card({ task, side }: { task: TaskCard; side: "given" | "received" }) {
         )}
 
         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10.5px] text-ink-2">
+          {/* 지시와 보고는 '올린 쪽'과 '담당자'가 서로 뒤집힌다. 서버가 ownerName·
+              handlerNames 로 정리해 보내므로 여기서는 그대로 쓴다 (2026-09-11). */}
           {side === "given" ? (
             <>
-              <span className="truncate">{task.assignees.map((a) => a.name).join(", ")}</span>
-              <span className="text-ink-3">
-                확인 {task.ack.acked}/{task.ack.total}
-              </span>
+              <span className="truncate">{task.handlerNames.join(", ")}</span>
+              {/* 「확인」 체크는 지시에만 있다 — 보고는 담당자가 받는 사람 한 명이라 셀 것이 없다. */}
+              {task.kind === "instruction" && (
+                <span className="text-ink-3">
+                  확인 {task.ack.acked}/{task.ack.total}
+                </span>
+              )}
             </>
           ) : (
             <>
-              <span>
-                지시 <span className="text-ink">{task.assignerName}</span>
-              </span>
-              {task.assignees.length > 1 && (
-                <span className="text-ink-3">함께 {task.assignees.length}명</span>
+              <span className="truncate text-ink">{task.ownerName}</span>
+              {task.kind === "instruction" && task.handlerNames.length > 1 && (
+                <span className="text-ink-3">함께 {task.handlerNames.length}명</span>
               )}
             </>
           )}

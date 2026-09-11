@@ -5,7 +5,7 @@ import { isUuid } from "@/lib/uuid";
 import { getSourceSubtree, getTaskDetail, markRejectionSeen } from "@/lib/tasks-server";
 import TaskThread from "@/components/tasks/TaskThread";
 import SourceTree from "@/components/tasks/SourceTree";
-import { TASK_STATUS_LABELS } from "@/lib/tasks";
+import { TASK_RETURN_LABELS, TASK_STATUS_LABELS } from "@/lib/tasks";
 import MarkdownView from "@/components/notes/MarkdownView";
 
 // 업무지시 상세.
@@ -24,9 +24,9 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
 
   const { card, source, attachments, updates, can } = detail;
 
-  // 지시를 여는 것만으로 반려 배지를 지운다 — 따로 누르는 「확인했음」 버튼은 두지 않는다
-  // (공지의 읽음 처리와 같은 판단이다).
-  if (card.rejected) await markRejectionSeen(id, session.employeeId);
+  // 지시를 여는 것만으로 되돌아옴 배지를 지운다 — 따로 누르는 「확인했음」 버튼은 두지
+  // 않는다 (공지의 읽음 처리와 같은 판단이다). 반려든 이어서 지시든 마찬가지다.
+  if (card.returned) await markRejectionSeen(id, session.employeeId);
 
   // 연결한 자료가 살아 있으면 그 가지를 곁에 띄운다 — 지시를 받은 사람이 보관함을
   // 따로 찾아 나가지 않아도 되게 한다 (2026-09-10). 좁은 화면에서는 아래로 접힌다.
@@ -52,8 +52,14 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
           <span className="border border-hair-2 px-1.5 py-px text-[10px] text-ink-2">
             {TASK_STATUS_LABELS[card.status]}
           </span>
-          {card.rejected && (
-            <span className="border border-late px-1.5 py-px text-[10px] text-late">반려됨</span>
+          {card.returned && (
+            <span
+              className={`border px-1.5 py-px text-[10px] ${
+                card.returned === "reject" ? "border-late text-late" : "border-amber text-amber"
+              }`}
+            >
+              {TASK_RETURN_LABELS[card.returned]}
+            </span>
           )}
           {card.dueOn && (
             <span className="font-mono text-[10.5px] text-ink-3">마감 {card.dueOn}</span>
@@ -64,13 +70,17 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
           {card.title}
         </h1>
 
+        {/* 올린 쪽과 담당자. 지시와 보고는 이 둘이 서로 뒤집히므로 서버가 정리해 준
+            ownerName·handlerNames 를 쓴다 (2026-09-11). */}
         <div className="mt-2.5 flex flex-wrap gap-1.5">
           <span className="border border-hair bg-l-cal px-2.5 py-0.5 text-[10.5px] text-ink-2">
-            지시 {card.assignerName}
+            {card.kind === "report" ? "보고" : "지시"} {card.ownerName}
           </span>
-          <span className="border border-hair bg-l-cal px-2.5 py-0.5 text-[10.5px] text-ink-2">
-            확인 {card.ack.acked}/{card.ack.total}
-          </span>
+          {card.kind === "instruction" && (
+            <span className="border border-hair bg-l-cal px-2.5 py-0.5 text-[10.5px] text-ink-2">
+              확인 {card.ack.acked}/{card.ack.total}
+            </span>
+          )}
           {card.status === "submitted" && card.submittedByName && (
             <span className="border border-amber px-2.5 py-0.5 text-[10.5px] text-amber">
               {card.submittedByName} 완료 보고
@@ -78,23 +88,33 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
           )}
         </div>
 
-        {/* 담당자 — 누가 확인했고 누가 아직인지 한눈에 */}
+        {/* 담당자 — 지시는 누가 확인했고 누가 아직인지까지, 보고는 받는 사람 한 명이다
+            (보고에는 「확인」 체크가 없다 — 받는 사람이 곧 결재하는 사람이라 따로 누를 것이 없다). */}
         <section className="mt-4">
           <h2 className="mb-1.5 text-[11px] font-medium text-ink-2">담당자</h2>
           <ul className="flex flex-wrap gap-1.5">
-            {card.assignees.map((a) => (
-              <li
-                key={a.employeeId}
-                className={`border px-2.5 py-0.5 text-[11.5px] ${
-                  a.ackedAt
-                    ? "border-hair bg-l-card text-ink"
-                    : "border-hair-2 border-dashed bg-l-card text-ink-3"
-                }`}
-              >
-                {a.name}
-                <span className="ml-1.5 text-[9.5px]">{a.ackedAt ? "확인함" : "미확인"}</span>
-              </li>
-            ))}
+            {card.kind === "report"
+              ? card.handlerNames.map((name) => (
+                  <li
+                    key={name}
+                    className="border border-hair bg-l-card px-2.5 py-0.5 text-[11.5px] text-ink"
+                  >
+                    {name}
+                  </li>
+                ))
+              : card.assignees.map((a) => (
+                  <li
+                    key={a.employeeId}
+                    className={`border px-2.5 py-0.5 text-[11.5px] ${
+                      a.ackedAt
+                        ? "border-hair bg-l-card text-ink"
+                        : "border-hair-2 border-dashed bg-l-card text-ink-3"
+                    }`}
+                  >
+                    {a.name}
+                    <span className="ml-1.5 text-[9.5px]">{a.ackedAt ? "확인함" : "미확인"}</span>
+                  </li>
+                ))}
           </ul>
         </section>
 

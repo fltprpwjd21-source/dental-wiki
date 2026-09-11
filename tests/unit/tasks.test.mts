@@ -6,17 +6,20 @@ import {
   canAck,
   canAddUpdate,
   canApprove,
-  canReject,
+  canFollowup,
   canSubmit,
   canView,
   compareTasks,
-  rejectPatch,
-  shouldShowRejectionBadge,
+  isHandler,
+  isOwner,
+  followupPatch,
+  returnBadgeKind,
   statusAfterNote,
   submitPatch,
   visibleProgress,
   type Task,
   type TaskAssignee,
+  type TaskReturn,
 } from "../../lib/tasks.ts";
 
 // 왜 이 검사가 필요한가
@@ -34,6 +37,7 @@ function makeTask(over: Partial<Task> = {}): Task {
     id: "t1",
     title: "소독실 매뉴얼 개정",
     body: "",
+    kind: "instruction",
     assigner_id: ASSIGNER,
     assigner_name: "원장",
     status: "assigned",
@@ -123,9 +127,46 @@ describe("업무지시 — 완료 보고와 확인", () => {
     assert.equal(canApprove(makeTask({ status: "in_progress" }), ASSIGNER), false);
   });
 
-  test("반려도 완료 확인과 같은 조건이다", () => {
-    assert.equal(canReject(makeTask({ status: "submitted" }), ASSIGNER), true);
-    assert.equal(canReject(makeTask({ status: "in_progress" }), ASSIGNER), false);
+  test("추가 요청도 완료 확인과 같은 조건이다", () => {
+    assert.equal(canFollowup(makeTask({ status: "submitted" }), ASSIGNER), true);
+    assert.equal(canFollowup(makeTask({ status: "in_progress" }), ASSIGNER), false);
+  });
+});
+
+describe("업무지시/보고 — 올린 쪽과 담당자", () => {
+  // 보고는 assigner_id 가 '보고를 받는 사람'이라 지시와 방향이 반대다.
+  // 이걸 뒤집지 않으면 내가 받은 보고가 「내가 요청한 업무」로 들어가고,
+  // 담당자 칸에 보고자 이름이 뜬다 (2026-09-11 보고된 문제).
+  const instruction = makeTask({ kind: "instruction" });
+  const report = makeTask({ kind: "report" });
+
+  test("지시는 낸 사람이 올린 쪽, 담당자가 처리할 쪽이다", () => {
+    assert.equal(isOwner(instruction, BOTH, ASSIGNER), true);
+    assert.equal(isHandler(instruction, BOTH, ASSIGNER), false);
+    assert.equal(isOwner(instruction, BOTH, WORKER_A), false);
+    assert.equal(isHandler(instruction, BOTH, WORKER_A), true);
+  });
+
+  test("보고는 정확히 반대다 — 올린 쪽이 보고자, 처리할 쪽이 받는 사람이다", () => {
+    assert.equal(isOwner(report, BOTH, WORKER_A), true);
+    assert.equal(isHandler(report, BOTH, WORKER_A), false);
+    assert.equal(isOwner(report, BOTH, ASSIGNER), false);
+    assert.equal(isHandler(report, BOTH, ASSIGNER), true);
+  });
+
+  test("어느 쪽이든 관계없는 사람은 둘 다 아니다", () => {
+    for (const task of [instruction, report]) {
+      assert.equal(isOwner(task, BOTH, OUTSIDER), false);
+      assert.equal(isHandler(task, BOTH, OUTSIDER), false);
+    }
+  });
+
+  test("보고를 받는 사람이 결재한다 — 처리할 쪽과 완료 확인 권한이 같다", () => {
+    const submitted = makeTask({ kind: "report", status: "submitted", submitted_by: WORKER_A });
+    assert.equal(isHandler(submitted, BOTH, ASSIGNER), true);
+    assert.equal(canApprove(submitted, ASSIGNER), true);
+    assert.equal(canFollowup(submitted, ASSIGNER), true);
+    assert.equal(canApprove(submitted, WORKER_A), false);
   });
 });
 
@@ -138,12 +179,18 @@ describe("업무지시 — 상태 전이", () => {
     assert.deepEqual(statusAfterNote(makeTask({ status: "submitted" })), {});
   });
 
-  test("완료 보고는 보고자와 시각을 함께 남긴다", () => {
+  test("완료 보고는 보고자와 시각을 남기고 진행률을 100% 로 채운다", () => {
     assert.deepEqual(submitPatch(WORKER_A, "2026-09-10T03:00:00Z"), {
       status: "submitted",
       submitted_by: WORKER_A,
       submitted_at: "2026-09-10T03:00:00Z",
+      progress: 100,
     });
+  });
+
+  test("되돌아가면 진행률이 다시 0 이 된다 — 완료 보고의 100% 가 남지 않는다", () => {
+    assert.equal(submitPatch(WORKER_A, "2026-09-10T03:00:00Z").progress, 100);
+    assert.equal(followupPatch().progress, 0);
   });
 
   test("완료 확인은 완료 시각을 남긴다", () => {
@@ -153,22 +200,22 @@ describe("업무지시 — 상태 전이", () => {
     });
   });
 
-  test("반려하면 진행률이 0 이 되고 다시 진행 중으로 돌아간다", () => {
-    assert.deepEqual(rejectPatch(), {
+  test("추가 요청하면 진행률이 0 이 되고 다시 진행 중으로 돌아간다", () => {
+    assert.deepEqual(followupPatch(), {
       status: "in_progress",
       progress: 0,
       submitted_at: null,
     });
   });
 
-  test("반려해도 보고자는 지우지 않는다 — 반려 알림이 갈 대상이기 때문이다", () => {
-    assert.equal("submitted_by" in rejectPatch(), false);
+  test("추가 요청해도 보고자는 지우지 않는다 — 배지가 갈 대상이기 때문이다", () => {
+    assert.equal("submitted_by" in followupPatch(), false);
   });
 
-  test("반려한 뒤에는 다시 완료 보고를 할 수 있다", () => {
-    const rejected = makeTask({ ...rejectPatch(), submitted_by: WORKER_A });
-    assert.equal(canSubmit(rejected, BOTH, WORKER_A), true);
-    assert.equal(canSubmit(rejected, BOTH, WORKER_B), true);
+  test("추가 요청을 받은 뒤에는 다시 완료 보고를 할 수 있다", () => {
+    const returned = makeTask({ ...followupPatch(), submitted_by: WORKER_A });
+    assert.equal(canSubmit(returned, BOTH, WORKER_A), true);
+    assert.equal(canSubmit(returned, BOTH, WORKER_B), true);
   });
 
   test("완료 확인이 끝난 지시에는 더 쓰지 않는다", () => {
@@ -191,37 +238,70 @@ describe("업무지시 — 진행률", () => {
   });
 });
 
-describe("업무지시 — 반려 배지", () => {
-  const REJECTED_AT = "2026-09-10T05:00:00Z";
+describe("업무지시 — 되돌아옴 배지", () => {
+  const RETURNED_AT = "2026-09-10T05:00:00Z";
+  const rejected: TaskReturn = { kind: "reject", at: RETURNED_AT };
+  const followedUp: TaskReturn = { kind: "followup", at: RETURNED_AT };
 
   test("완료 보고를 올린 담당자에게만 붙는다", () => {
     const task = makeTask({ status: "in_progress", submitted_by: WORKER_A });
-    assert.equal(shouldShowRejectionBadge(task, makeAssignee(WORKER_A), REJECTED_AT), true);
-    assert.equal(shouldShowRejectionBadge(task, makeAssignee(WORKER_B), REJECTED_AT), false);
+    assert.equal(returnBadgeKind(task, makeAssignee(WORKER_A), rejected), "reject");
+    assert.equal(returnBadgeKind(task, makeAssignee(WORKER_B), rejected), null);
+  });
+
+  test("반려인지 이어서 지시인지를 구분해 돌려준다", () => {
+    const task = makeTask({ status: "in_progress", submitted_by: WORKER_A });
+    assert.equal(returnBadgeKind(task, makeAssignee(WORKER_A), followedUp), "followup");
   });
 
   test("지시를 열어본 뒤에는 사라진다", () => {
     const task = makeTask({ status: "in_progress", submitted_by: WORKER_A });
     const seen = makeAssignee(WORKER_A, { rejection_seen_at: "2026-09-10T06:00:00Z" });
-    assert.equal(shouldShowRejectionBadge(task, seen, REJECTED_AT), false);
+    assert.equal(returnBadgeKind(task, seen, rejected), null);
   });
 
-  test("전에 본 반려보다 새 반려가 있으면 다시 뜬다", () => {
+  test("전에 본 것보다 새로 되돌아온 것이 있으면 다시 뜬다", () => {
     const task = makeTask({ status: "in_progress", submitted_by: WORKER_A });
     const seen = makeAssignee(WORKER_A, { rejection_seen_at: "2026-09-10T04:00:00Z" });
-    assert.equal(shouldShowRejectionBadge(task, seen, REJECTED_AT), true);
+    assert.equal(returnBadgeKind(task, seen, followedUp), "followup");
   });
 
   test("소수점 자릿수와 오프셋 표기가 달라도 시각을 제대로 비교한다", () => {
     const task = makeTask({ status: "in_progress", submitted_by: WORKER_A });
     // 같은 순간을 Postgres 가 다른 표기로 돌려준 경우 — 사전순 비교였다면 어긋난다
     const seen = makeAssignee(WORKER_A, { rejection_seen_at: "2026-09-10T14:00:00.123456+09:00" });
-    assert.equal(shouldShowRejectionBadge(task, seen, "2026-09-10T05:00:00Z"), false);
+    assert.equal(returnBadgeKind(task, seen, { kind: "reject", at: "2026-09-10T05:00:00Z" }), null);
   });
 
-  test("반려가 없으면 뜨지 않는다", () => {
+  test("되돌아온 적이 없으면 뜨지 않는다", () => {
     const task = makeTask({ submitted_by: WORKER_A });
-    assert.equal(shouldShowRejectionBadge(task, makeAssignee(WORKER_A), null), false);
+    assert.equal(returnBadgeKind(task, makeAssignee(WORKER_A), null), null);
+  });
+});
+
+describe("업무지시 — 이어서 지시", () => {
+  test("완료 보고가 올라와 있을 때 지시자만 누를 수 있다", () => {
+    const submitted = makeTask({ status: "submitted", submitted_by: WORKER_A });
+    assert.equal(canFollowup(submitted, ASSIGNER), true);
+    assert.equal(canFollowup(submitted, WORKER_A), false);
+    assert.equal(canFollowup(submitted, OUTSIDER), false);
+  });
+
+  test("완료 보고 전에는 누를 수 없다", () => {
+    assert.equal(canFollowup(makeTask({ status: "in_progress" }), ASSIGNER), false);
+    assert.equal(canFollowup(makeTask({ status: "done" }), ASSIGNER), false);
+  });
+
+  test("같은 건이 다시 진행 중이 되고 완료 시각은 남기지 않는다", () => {
+    const patch = followupPatch();
+    assert.equal(patch.status, "in_progress");
+    assert.equal(patch.progress, 0);
+    assert.equal(patch.submitted_at, null);
+    assert.equal("completed_at" in patch, false);
+  });
+
+  test("완료 시각은 남기지 않는다 — 완료가 아니다", () => {
+    assert.equal("completed_at" in followupPatch(), false);
   });
 });
 

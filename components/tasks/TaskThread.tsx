@@ -4,16 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FILE_MAX_SIZE_MB, isAllowedExtension, isOversized } from "@/lib/file-rules";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
-import { DEFAULT_SUBMIT_BODY, PROGRESS_STEPS } from "@/lib/tasks";
+import { DEFAULT_SUBMIT_BODY, PROGRESS_STEPS, type TaskReturnKind } from "@/lib/tasks";
 import type { TaskDetail, TaskUpdateView } from "@/lib/tasks-server";
 import FileDropZone from "@/components/tasks/FileDropZone";
 
 // 업무지시 대화창 (PLAN 8차 37번).
 //
 // 왜 채팅 모양인가
-//   지시 → 작업 → 완료 보고 → 반려 → 다시 작업은 시간 순서가 곧 의미다. 표로 쌓으면
-//   "왜 진행률이 0 이 됐지"를 알려면 여러 칸을 짚어봐야 하는데, 한 줄로 흐르면 반려
-//   사유 바로 아래에 그 답이 있다.
+//   지시 → 작업 → 완료 보고 → 추가 요청 → 다시 작업은 시간 순서가 곧 의미다. 표로 쌓으면
+//   "왜 진행률이 0 이 됐지"를 알려면 여러 칸을 짚어봐야 하는데, 한 줄로 흐르면 추가 요청
+//   내용 바로 아래에 그 답이 있다.
 //
 // 임시저장을 브라우저에 두는 이유
 //   올린 기록은 지울 수 없다(DB 트리거). 올리기 전 초안까지 서버에 두면 "남의 초안"을
@@ -66,8 +66,19 @@ function SystemLine({ tone, children }: { tone: "muted" | "amber" | "late"; chil
   );
 }
 
+// 되돌아온 기록은 담당자가 다시 손대야 한다는 신호라 눈에 띄게 그린다.
+// 'reject' 는 「추가 요청」으로 합치기 전에 쌓인 기록에만 남는다 — 그때는 정말 반려였으므로
+// 빨강과 옛 이름을 그대로 둔다 (2026-09-11).
+const RETURN_BUBBLE: Record<TaskReturnKind, { label: string; text: string; box: string }> = {
+  reject: { label: "반려 사유", text: "text-late", box: "border-late bg-l-card text-ink" },
+  followup: { label: "추가 요청", text: "text-amber", box: "border-amber bg-l-card text-ink" },
+};
+
 function Bubble({ update, mine }: { update: TaskUpdateView; mine: boolean }) {
-  const isReject = update.kind === "reject";
+  const returned =
+    update.kind === "reject" || update.kind === "followup"
+      ? RETURN_BUBBLE[update.kind]
+      : null;
 
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -79,13 +90,13 @@ function Bubble({ update, mine }: { update: TaskUpdateView; mine: boolean }) {
         >
           <span className="text-ink-2">{update.authorName}</span>
           <span>{timeLabel(update.createdAt)}</span>
-          {isReject && <span className="text-late">반려 사유</span>}
+          {returned && <span className={returned.text}>{returned.label}</span>}
           {update.editedAt && <span>(수정됨)</span>}
         </div>
         <div
           className={`border px-2.5 py-1.5 text-[12.5px] leading-relaxed whitespace-pre-wrap break-words ${
-            isReject
-              ? "border-late bg-l-card text-ink"
+            returned
+              ? returned.box
               : mine
                 ? "border-meet bg-l-cal text-ink"
                 : "border-hair bg-l-card text-ink"
@@ -119,7 +130,8 @@ export default function TaskThread({
   const [body, setBody] = useState("");
   const [nextProgress, setNextProgress] = useState(progress);
   const [files, setFiles] = useState<File[]>([]);
-  const [rejecting, setRejecting] = useState(false);
+  // 「추가 요청」 입력칸을 열었는가. 반려와 이어서 지시가 이 하나로 합쳐졌다 (2026-09-11).
+  const [returning, setReturning] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -251,6 +263,9 @@ export default function TaskThread({
       setBody("");
       setFiles([]);
       clearDraft();
+      // 완료 보고를 올리면 서버가 진행률을 100% 로 확정한다. 눈금 상태는 처음 렌더될 때의
+      // 값을 들고 있어서 새로고침만으로는 따라오지 않으므로 여기서 함께 맞춘다.
+      if (submit) setNextProgress(100);
       if (failed.length > 0) setError(`기록은 남았지만 첨부에 문제가 있습니다 — ${failed[0]}`);
       router.refresh();
     } catch {
@@ -260,9 +275,14 @@ export default function TaskThread({
     }
   }
 
-  async function decide(decision: "approve" | "reject") {
+  const DECIDE_BUSY = {
+    approve: "완료 확인 중...",
+    followup: "추가 요청하는 중...",
+  } as const;
+
+  async function decide(decision: "approve" | "followup") {
     setError(null);
-    setBusy(decision === "approve" ? "완료 확인 중..." : "반려하는 중...");
+    setBusy(DECIDE_BUSY[decision]);
     try {
       const response = await fetch(`/api/tasks/${taskId}/decision`, {
         method: "POST",
@@ -274,7 +294,7 @@ export default function TaskThread({
         setError(data.error ?? "처리에 실패했습니다.");
         return;
       }
-      setRejecting(false);
+      setReturning(false);
       setReason("");
       router.refresh();
     } catch {
@@ -297,7 +317,7 @@ export default function TaskThread({
   // 쓰는 칸은 담당자에게만 (2026-09-10). 지시자는 반려 사유가 그 자리다.
   // 지시자에게도 완료 확인·반려 버튼은 필요하므로 그 줄은 따로 그린다.
   const showCompose = can.compose;
-  const showDecision = can.approve || can.reject;
+  const showDecision = can.approve || can.followup;
 
   return (
     <section className="mt-5">
@@ -316,6 +336,11 @@ export default function TaskThread({
               {update.kind === "reject" && (
                 <SystemLine tone="late">
                   {update.authorName}님이 반려했습니다 · 진행률이 0% 로 초기화되었습니다
+                </SystemLine>
+              )}
+              {update.kind === "followup" && (
+                <SystemLine tone="amber">
+                  {update.authorName}님이 추가 요청했습니다 · 진행률이 0% 로 초기화되었습니다
                 </SystemLine>
               )}
               {update.kind === "note" && update.progress !== null && (
@@ -447,23 +472,23 @@ export default function TaskThread({
                 완료 확인
               </button>
             )}
-            {can.reject && !rejecting && (
+            {can.followup && !returning && (
               <button
                 type="button"
-                onClick={() => setRejecting(true)}
+                onClick={() => setReturning(true)}
                 disabled={busy !== null}
-                className="border border-late px-3 py-1.5 text-[11.5px] text-late hover:bg-l-card disabled:opacity-50"
+                className="border border-amber px-3 py-1.5 text-[11.5px] text-amber hover:bg-l-card disabled:opacity-50"
               >
-                반려
+                추가 요청
               </button>
             )}
             {busy && <span className="self-center text-[11px] text-ink-3">{busy}</span>}
           </div>
 
-          {rejecting && (
-            <div className="mt-2.5 border border-late bg-l-card p-2.5">
-              <label htmlFor="task-reason" className="mb-1 block text-[10.5px] text-late">
-                반려 사유 (필수)
+          {returning && (
+            <div className="mt-2.5 border border-amber bg-l-card p-2.5">
+              <label htmlFor="task-reason" className="mb-1 block text-[10.5px] text-amber">
+                추가로 요청할 내용 (필수)
               </label>
               <textarea
                 id="task-reason"
@@ -471,22 +496,22 @@ export default function TaskThread({
                 onChange={(e) => setReason(e.target.value)}
                 rows={2}
                 autoFocus
-                placeholder="무엇을 고쳐야 하는지 적어주세요."
+                placeholder="무엇을 더 하면 되는지 적어주세요."
                 className="w-full border border-hair-2 bg-l-card px-2.5 py-1.5 text-[12.5px] text-ink"
               />
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => decide("reject")}
+                  onClick={() => decide("followup")}
                   disabled={busy !== null || !reason.trim()}
-                  className="border border-late bg-late px-3 py-1 text-[11.5px] text-white hover:opacity-90 disabled:opacity-40"
+                  className="border border-amber bg-amber px-3 py-1 text-[11.5px] text-white hover:opacity-90 disabled:opacity-40"
                 >
-                  반려하기
+                  추가 요청하기
                 </button>
                 <button
                   type="button"
                   onClick={() => {
-                    setRejecting(false);
+                    setReturning(false);
                     setReason("");
                   }}
                   className="border border-hair-2 px-3 py-1 text-[11.5px] text-ink-2 hover:bg-l-cal"

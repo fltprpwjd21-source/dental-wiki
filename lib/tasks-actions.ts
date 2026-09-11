@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/uuid";
-import type { Task, TaskAssignee } from "@/lib/tasks";
+import type { Task, TaskAssignee, TaskUpdateKind } from "@/lib/tasks";
 
 // 업무지시 조작 라우트들이 똑같이 반복하는 앞부분을 모은다 (PLAN 8차 37번).
 //
@@ -43,7 +43,7 @@ export async function appendUpdate(params: {
   taskId: string;
   authorId: string;
   authorName: string | null;
-  kind: "note" | "submit" | "reject";
+  kind: TaskUpdateKind;
   body: string;
   progress?: number | null;
   taskPatch?: Record<string, unknown>;

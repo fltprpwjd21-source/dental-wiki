@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
 //
 // 「노트」는 보관함으로 이름을 바꿨다 — 폴더에 문서·사진·PDF를 넣어 두는 곳이라
 // '노트'보다 하는 일에 가깝다.
-// 「업무지시」에는 배지가 붙는다 — 내가 지금 눌러야 할 것의 개수다.
+// 「업무」에는 배지가 붙는다 — 내가 지금 눌러야 할 것의 개수다.
 // 어느 화면에 있든 보여야 해서 탭에 둔다 (지시를 받았거나 완료 보고가 올라온 것을
 // 바로 못 볼 수도 있으므로, 누르기 전까지 사라지지 않는다).
 const TABS = [
@@ -20,7 +20,7 @@ const TABS = [
   { href: "/categories/policy", label: "내규" },
   { href: "/notes", label: "보관함" },
   { href: "/lab", label: "기공물확인" },
-  { href: "/tasks", label: "업무지시" },
+  { href: "/tasks", label: "업무" },
 ];
 
 export default function AppTabs({ taskBadge = 0 }: { taskBadge?: number }) {

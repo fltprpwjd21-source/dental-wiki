@@ -3,6 +3,7 @@ import { withSession } from "@/lib/with-session";
 import { getServerSupabaseClient } from "@/lib/supabase/server";
 import { getTaskInbox } from "@/lib/tasks-server";
 import { isUuid } from "@/lib/uuid";
+import type { TaskKind } from "@/lib/tasks";
 
 // 업무지시 목록·등록 (PLAN 8차 36번, PRD ⑨)
 
@@ -13,7 +14,13 @@ export async function GET() {
   });
 }
 
-// 지시는 로그인한 스탭 누구나 낼 수 있다 (관리자 전용이 아니다 — 공지와 같다).
+// 지시도 보고도 로그인한 스탭 누구나 올릴 수 있다 (관리자 전용이 아니다 — 공지와 같다).
+//
+// 같은 라우트가 둘을 만든다. 갈리는 것은 "누가 assigner_id 가 되는가" 하나뿐이다.
+//   kind='instruction' — 내가 지시자, 고른 사람들이 담당자
+//   kind='report'      — 고른 사람이 보고를 받는 쪽(=assigner_id), 내가 담당자
+// 어느 쪽이든 완료 확인·이어서 지시·반려를 누르는 사람이 assigner_id 라서
+// lib/tasks.ts 의 규칙이 그대로 통한다 (2026-09-11).
 export async function POST(request: NextRequest) {
   return withSession(async (session) => {
     const body = await request.json().catch(() => null);
@@ -22,6 +29,7 @@ export async function POST(request: NextRequest) {
     const content = typeof body?.body === "string" ? body.body.trim() : "";
     const dueOn = typeof body?.dueOn === "string" && body.dueOn ? body.dueOn : null;
     const isLongterm = body?.isLongterm === true;
+    const kind: TaskKind = body?.kind === "report" ? "report" : "instruction";
     const sourceNodeId = typeof body?.sourceNodeId === "string" && body.sourceNodeId ? body.sourceNodeId : null;
     const assigneeIds: string[] = Array.isArray(body?.assigneeIds)
       ? [
@@ -36,8 +44,19 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json({ error: "제목을 입력해주세요." }, { status: 400 });
     }
-    if (assigneeIds.length === 0) {
-      return NextResponse.json({ error: "담당자를 한 명 이상 골라주세요." }, { status: 400 });
+    if (kind === "instruction") {
+      if (assigneeIds.length === 0) {
+        return NextResponse.json({ error: "담당자를 한 명 이상 골라주세요." }, { status: 400 });
+      }
+    } else {
+      // 보고를 받는 사람은 한 명이다. 여럿에게 같은 보고를 올리면 누가 컨펌해야 하는지
+      // 갈리고, assigner_id 는 한 칸뿐이라 표현할 수도 없다.
+      if (assigneeIds.length !== 1) {
+        return NextResponse.json({ error: "보고를 받을 사람을 한 명 골라주세요." }, { status: 400 });
+      }
+      if (assigneeIds[0] === session.employeeId) {
+        return NextResponse.json({ error: "자기 자신에게 보고할 수는 없습니다." }, { status: 400 });
+      }
     }
     // 날짜는 <input type="date"> 가 보내는 모양만 받는다. 다른 문자열이 오면 Postgres 가
     // 거부하면서 등록 전체가 500 이 되므로 여기서 400 으로 돌려준다.
@@ -80,6 +99,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "등록되지 않은 사원번호가 있습니다." }, { status: 422 });
     }
 
+    // 여기서 두 종류가 갈린다. 아래 insert 는 이 두 값만 보고 같은 모양으로 쓴다.
+    const assignerId = kind === "report" ? assigneeIds[0] : session.employeeId;
+    const workerIds = kind === "report" ? [session.employeeId] : assigneeIds;
+
+    // 보고는 만들어지는 순간 이미 올라온 것이다 — 곧바로 「완료 확인 대기」로 시작해
+    // 받는 사람이 완료 확인·이어서 지시·반려 중 하나를 고르게 한다.
+    // (tasks_submitted_needs_reporter 제약이 submitted_by·submitted_at 을 함께 요구한다)
+    const now = new Date().toISOString();
+    const startAsSubmitted =
+      kind === "report"
+        ? { status: "submitted" as const, submitted_by: session.employeeId, submitted_at: now }
+        : {};
+
     // 이름은 지시를 만든 시점의 값을 함께 저장한다(스냅샷). 퇴사해서 화이트리스트에서
     // 지워져도 "누가 누구에게 시켰는지"는 남아야 하기 때문이다.
     // 화면은 화이트리스트의 지금 이름을 먼저 쓰고, 없을 때만 이 값으로 떨어진다.
@@ -88,11 +120,13 @@ export async function POST(request: NextRequest) {
       .insert({
         title,
         body: content,
-        assigner_id: session.employeeId,
-        assigner_name: nameOf.get(session.employeeId) ?? null,
+        kind,
+        assigner_id: assignerId,
+        assigner_name: nameOf.get(assignerId) ?? null,
         is_longterm: isLongterm,
         due_on: dueOn,
         source_node_id: sourceNodeId,
+        ...startAsSubmitted,
       })
       .select("id")
       .single();
@@ -103,7 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { error: assigneeError } = await supabase.from("task_assignees").insert(
-      assigneeIds.map((id) => ({
+      workerIds.map((id) => ({
         task_id: task.id,
         employee_id: id,
         employee_name: nameOf.get(id) ?? null,

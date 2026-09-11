@@ -8,14 +8,20 @@ import {
   canAck,
   canAddUpdate,
   canApprove,
-  canReject,
+  canFollowup,
   canSubmit,
   canView,
   compareTasks,
-  shouldShowRejectionBadge,
+  isHandler,
+  isOwner,
+  returnBadgeKind,
   visibleProgress,
   type Task,
   type TaskAssignee,
+  type TaskKind,
+  type TaskReturn,
+  type TaskReturnKind,
+  type TaskUpdateKind,
 } from "@/lib/tasks";
 
 // 업무지시를 화면에 필요한 모양으로 읽어온다 (PLAN 8차 36번).
@@ -26,6 +32,8 @@ export type TaskCard = {
   id: string;
   title: string;
   body: string;
+  /** 업무지시인가 업무보고인가. 화면의 배지와 「지시자/받는 사람」 라벨이 갈린다. */
+  kind: TaskKind;
   status: Task["status"];
   isLongterm: boolean;
   /** 장기 업무가 아니면 null — 화면은 이 값이 null 이면 진행률 막대를 그리지 않는다. */
@@ -34,10 +42,21 @@ export type TaskCard = {
   assignerId: string;
   assignerName: string;
   assignees: { employeeId: string; name: string; ackedAt: string | null }[];
+  /**
+   * 화면에서 쓰는 역할 이름. 지시와 보고가 서로 뒤집히므로 여기서 한 번 정리해 보낸다
+   * (lib/tasks.ts 의 isOwner/isHandler 와 같은 규칙, 2026-09-11).
+   *   ownerName    — 올린 사람 (지시면 지시자, 보고면 보고자)
+   *   handlerNames — 담당자 (지시면 담당자들, 보고면 보고를 받는 사람)
+   */
+  ownerName: string;
+  handlerNames: string[];
   ack: { acked: number; total: number };
   submittedByName: string | null;
-  /** 내가 올린 완료 보고가 반려됐고 아직 안 봤다 */
-  rejected: boolean;
+  /**
+   * 내가 올린 완료 보고가 되돌아왔고 아직 안 봤다면 그 종류, 아니면 null.
+   * 'reject' 는 다시 해야 하는 것이고 'followup' 은 이어서 하는 것이다.
+   */
+  returned: TaskReturnKind | null;
   /** 나는 이 지시를 확인했는가. 담당자가 아니면 null */
   myAckedAt: string | null | undefined;
   attachmentCount: number;
@@ -91,14 +110,15 @@ export async function getTaskInbox(employeeId: string): Promise<TaskInbox> {
 
     const taskIds = tasks.map((t) => t.id);
 
-    const [assigneeResult, rejectResult, attachmentResult] = await Promise.all([
+    const [assigneeResult, returnResult, attachmentResult] = await Promise.all([
       supabase.from("task_assignees").select("*").in("task_id", taskIds),
-      // 반려 배지는 "마지막 반려를 봤는가" 로 판단하므로 반려 기록의 시각만 있으면 된다.
+      // 배지는 "마지막으로 되돌아온 것을 봤는가" 로 판단하므로 시각과 종류만 있으면 된다.
+      // 반려와 이어서 지시를 함께 읽는다 — 담당자에게는 둘 다 "다시 내 차례"다.
       supabase
         .from("task_updates")
-        .select("task_id, created_at")
+        .select("task_id, created_at, kind")
         .in("task_id", taskIds)
-        .eq("kind", "reject")
+        .in("kind", ["reject", "followup"])
         .order("created_at", { ascending: false }),
       supabase.from("task_attachments").select("task_id").in("task_id", taskIds),
     ]);
@@ -116,11 +136,13 @@ export async function getTaskInbox(employeeId: string): Promise<TaskInbox> {
       assigneesByTask.set(row.task_id, list);
     }
 
-    // 내림차순으로 읽었으므로 각 지시의 첫 줄이 가장 최근 반려다.
-    const latestRejectByTask = new Map<string, string>();
-    for (const row of rejectResult.data ?? []) {
+    // 내림차순으로 읽었으므로 각 지시의 첫 줄이 가장 최근에 되돌아온 사건이다.
+    const latestReturnByTask = new Map<string, TaskReturn>();
+    for (const row of returnResult.data ?? []) {
       const id = row.task_id as string;
-      if (!latestRejectByTask.has(id)) latestRejectByTask.set(id, row.created_at as string);
+      if (!latestReturnByTask.has(id)) {
+        latestReturnByTask.set(id, { kind: row.kind as TaskReturnKind, at: row.created_at as string });
+      }
     }
 
     // 사람 이름은 화이트리스트의 지금 이름을 먼저 쓰고, 없으면 지시에 저장해 둔
@@ -139,11 +161,20 @@ export async function getTaskInbox(employeeId: string): Promise<TaskInbox> {
       const assignees = assigneesByTask.get(task.id) ?? [];
       const me = assignees.find((a) => a.employee_id === employeeId);
       const submittedSnapshot = assignees.find((a) => a.employee_id === task.submitted_by);
+      const assignerLabel = displayName(
+        task.assigner_id,
+        nameOf.get(task.assigner_id),
+        task.assigner_name,
+      );
+      const assigneeNames = assignees.map((a) =>
+        displayName(a.employee_id, nameOf.get(a.employee_id), a.employee_name),
+      );
 
       return {
         id: task.id,
         title: task.title,
         body: task.body,
+        kind: task.kind,
         status: task.status,
         isLongterm: task.is_longterm,
         progress: visibleProgress(task),
@@ -156,10 +187,12 @@ export async function getTaskInbox(employeeId: string): Promise<TaskInbox> {
           ackedAt: a.acked_at,
         })),
         ack: ackSummary(assignees),
+        ownerName: task.kind === "report" ? assigneeNames.join(", ") : assignerLabel,
+        handlerNames: task.kind === "report" ? [assignerLabel] : assigneeNames,
         submittedByName: task.submitted_by
           ? displayName(task.submitted_by, nameOf.get(task.submitted_by), submittedSnapshot?.employee_name)
           : null,
-        rejected: shouldShowRejectionBadge(task, me, latestRejectByTask.get(task.id) ?? null),
+        returned: returnBadgeKind(task, me, latestReturnByTask.get(task.id) ?? null),
         myAckedAt: me ? me.acked_at : undefined,
         attachmentCount: attachmentCountByTask.get(task.id) ?? 0,
         createdAt: task.created_at,
@@ -169,10 +202,14 @@ export async function getTaskInbox(employeeId: string): Promise<TaskInbox> {
 
     const sorted = [...tasks].sort(compareTasks);
 
+    // 보고는 assigner_id 가 '받는 사람'이라 지시와 방향이 반대다. 그대로 나누면 내가 받은
+    // 보고가 「내가 요청한 업무」로 들어간다 — isOwner/isHandler 로 한 번 뒤집어 나눈다.
     return {
-      given: sorted.filter((t) => t.assigner_id === employeeId).map(toCard),
+      given: sorted
+        .filter((t) => isOwner(t, assigneesByTask.get(t.id) ?? [], employeeId))
+        .map(toCard),
       received: sorted
-        .filter((t) => (assigneesByTask.get(t.id) ?? []).some((a) => a.employee_id === employeeId))
+        .filter((t) => isHandler(t, assigneesByTask.get(t.id) ?? [], employeeId))
         .map(toCard),
     };
   } catch (error) {
@@ -203,7 +240,7 @@ export type TaskSourceView = {
 /** 대화창에 쌓이는 한 줄. */
 export type TaskUpdateView = {
   id: string;
-  kind: "note" | "submit" | "reject";
+  kind: TaskUpdateKind;
   authorId: string;
   authorName: string;
   body: string;
@@ -225,7 +262,8 @@ export type TaskDetail = {
     addUpdate: boolean;
     submit: boolean;
     approve: boolean;
-    reject: boolean;
+    /** 「추가 요청」 — 코멘트를 남겨 같은 건을 다시 진행 중으로 되돌린다 */
+    followup: boolean;
     /**
      * 작업 기록 칸(글·진행률·첨부)을 열어줄지.
      *
@@ -271,9 +309,14 @@ export async function getTaskDetail(taskId: string, employeeId: string): Promise
     const updateRows = updateResult.data ?? [];
     const attachments = attachmentResult.data ?? [];
 
-    // 가장 최근 반려의 시각 — 반려 배지를 띄울지 판단하는 데 쓴다.
-    const latestReject =
-      [...updateRows].reverse().find((u) => u.kind === "reject")?.created_at ?? null;
+    // 가장 최근에 되돌아온 사건 — 배지를 띄울지, 띄운다면 어느 쪽인지 판단하는 데 쓴다.
+    // 오름차순으로 읽었으므로 뒤에서부터 찾는다.
+    const latestReturnRow = [...updateRows]
+      .reverse()
+      .find((u) => u.kind === "reject" || u.kind === "followup");
+    const latestReturn: TaskReturn | null = latestReturnRow
+      ? { kind: latestReturnRow.kind as TaskReturnKind, at: latestReturnRow.created_at as string }
+      : null;
 
     const everyone = new Set<string>([task.assigner_id, ...assignees.map((a) => a.employee_id)]);
     if (task.submitted_by) everyone.add(task.submitted_by);
@@ -293,10 +336,20 @@ export async function getTaskDetail(taskId: string, employeeId: string): Promise
     const me = assignees.find((a) => a.employee_id === employeeId);
     const submittedSnapshot = assignees.find((a) => a.employee_id === task.submitted_by);
 
+    const assignerLabel = displayName(
+      task.assigner_id,
+      nameOf.get(task.assigner_id),
+      task.assigner_name,
+    );
+    const assigneeNames = assignees.map((a) =>
+      displayName(a.employee_id, nameOf.get(a.employee_id), a.employee_name),
+    );
+
     const card: TaskCard = {
       id: task.id,
       title: task.title,
       body: task.body,
+      kind: task.kind,
       status: task.status,
       isLongterm: task.is_longterm,
       progress: visibleProgress(task),
@@ -309,10 +362,12 @@ export async function getTaskDetail(taskId: string, employeeId: string): Promise
         ackedAt: a.acked_at,
       })),
       ack: ackSummary(assignees),
+      ownerName: task.kind === "report" ? assigneeNames.join(", ") : assignerLabel,
+      handlerNames: task.kind === "report" ? [assignerLabel] : assigneeNames,
       submittedByName: task.submitted_by
         ? displayName(task.submitted_by, nameOf.get(task.submitted_by), submittedSnapshot?.employee_name)
         : null,
-      rejected: shouldShowRejectionBadge(task, me, latestReject),
+      returned: returnBadgeKind(task, me, latestReturn),
       myAckedAt: me ? me.acked_at : undefined,
       attachmentCount: attachments.length,
       createdAt: task.created_at,
@@ -356,7 +411,7 @@ export async function getTaskDetail(taskId: string, employeeId: string): Promise
         addUpdate: canAddUpdate(task, assignees, employeeId),
         submit: canSubmit(task, assignees, employeeId),
         approve: canApprove(task, employeeId),
-        reject: canReject(task, employeeId),
+        followup: canFollowup(task, employeeId),
         compose:
           canAddUpdate(task, assignees, employeeId) &&
           assignees.some((a) => a.employee_id === employeeId),
@@ -469,21 +524,23 @@ export const countPendingActions = cache(async (employeeId: string): Promise<num
     if (mine.length === 0) return waitingForMyApproval;
 
     const myTaskIds = mine.map((r) => r.task_id as string);
-    const [taskResult, rejectResult] = await Promise.all([
+    const [taskResult, returnResult] = await Promise.all([
       supabase.from("tasks").select("*").in("id", myTaskIds).is("deleted_at", null),
       supabase
         .from("task_updates")
-        .select("task_id, created_at")
+        .select("task_id, created_at, kind")
         .in("task_id", myTaskIds)
-        .eq("kind", "reject")
+        .in("kind", ["reject", "followup"])
         .order("created_at", { ascending: false }),
     ]);
 
     const tasks = (taskResult.data ?? []) as Task[];
-    const latestRejectByTask = new Map<string, string>();
-    for (const row of rejectResult.data ?? []) {
+    const latestReturnByTask = new Map<string, TaskReturn>();
+    for (const row of returnResult.data ?? []) {
       const id = row.task_id as string;
-      if (!latestRejectByTask.has(id)) latestRejectByTask.set(id, row.created_at as string);
+      if (!latestReturnByTask.has(id)) {
+        latestReturnByTask.set(id, { kind: row.kind as TaskReturnKind, at: row.created_at as string });
+      }
     }
     const rowByTask = new Map(mine.map((r) => [r.task_id as string, r]));
 
@@ -501,7 +558,7 @@ export const countPendingActions = cache(async (employeeId: string): Promise<num
         acked_at: row.acked_at as string | null,
         rejection_seen_at: row.rejection_seen_at as string | null,
       };
-      if (shouldShowRejectionBadge(task, assignee, latestRejectByTask.get(task.id) ?? null)) count += 1;
+      if (returnBadgeKind(task, assignee, latestReturnByTask.get(task.id) ?? null) !== null) count += 1;
     }
     return count;
   } catch (error) {
@@ -564,6 +621,117 @@ export async function getArchiveNodes(): Promise<FlatNode[]> {
     return (data ?? []) as FlatNode[];
   } catch (error) {
     console.error("[tasks] 보관함 조회 실패", error);
+    return [];
+  }
+}
+
+// ── 게시판 ──────────────────────────────────────────────────────────────
+
+/**
+ * 게시판 한 줄. 당사자가 아닌 사람도 보는 값만 담는다.
+ *
+ * 여기에 body 가 없는 것이 이 기능의 핵심이다 — 화면에서 가리는 것이 아니라,
+ * 조회 자체가 본문을 읽지 않는다.
+ */
+export type TaskBoardItem = {
+  id: string;
+  title: string;
+  kind: TaskKind;
+  status: Task["status"];
+  /** 장기 업무가 아니면 null */
+  progress: number | null;
+  dueOn: string | null;
+  /** 지시를 낸 사람, 또는 보고를 받는 사람 */
+  assignerName: string;
+  assigneeNames: string[];
+  updatedAt: string;
+  /** 내가 당사자라 열어볼 수 있는가. 아니면 화면이 링크를 걸지 않는다 */
+  mine: boolean;
+};
+
+// 전 스탭이 보는 진행상황 목록 (2026-09-11, task-board.plan.md ①).
+//
+// getTaskInbox() 와 따로 두는 이유
+//   같은 함수에 "요약만" 플래그를 넘기는 방식이면, 언젠가 플래그를 안 넘기는 호출부가
+//   하나 생기는 순간 본문이 그대로 나간다. 함수를 나누고 select 목록에서 body 를 빼면
+//   실수로도 나갈 수 없다. 목록이 길어질 일은 없지만(병원 한 곳), 상한은 둔다.
+//
+// 정렬은 진행 중인 것을 위로, 완료를 아래로 두고 그 안에서 최근 갱신순이다.
+// 게시판을 여는 이유가 "지금 무엇이 돌고 있나"라서 완료된 것은 뒤로 밀린다.
+const BOARD_LIMIT = 200;
+
+export async function getTaskBoard(employeeId: string): Promise<TaskBoardItem[]> {
+  try {
+    const supabase = getServerSupabaseClient();
+
+    const { data: taskRows, error } = await supabase
+      .from("tasks")
+      // body 는 일부러 뺐다. 여기에 다시 넣지 말 것 — 당사자가 아닌 사람도 읽는 목록이다.
+      .select("id, title, kind, status, is_longterm, progress, due_on, assigner_id, assigner_name, updated_at")
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false })
+      .limit(BOARD_LIMIT);
+
+    if (error) {
+      console.error("[tasks] 게시판 조회 실패", error);
+      return [];
+    }
+
+    type BoardRow = Pick<
+      Task,
+      "id" | "title" | "kind" | "status" | "is_longterm" | "progress" | "due_on" | "assigner_id" | "assigner_name" | "updated_at"
+    >;
+    const rows = (taskRows ?? []) as BoardRow[];
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((r) => r.id);
+    const { data: assigneeRows } = await supabase
+      .from("task_assignees")
+      .select("task_id, employee_id, employee_name")
+      .in("task_id", ids);
+
+    const assigneesByTask = new Map<string, { employee_id: string; employee_name: string | null }[]>();
+    for (const row of assigneeRows ?? []) {
+      const id = row.task_id as string;
+      const list = assigneesByTask.get(id) ?? [];
+      list.push({
+        employee_id: row.employee_id as string,
+        employee_name: row.employee_name as string | null,
+      });
+      assigneesByTask.set(id, list);
+    }
+
+    const everyone = new Set<string>();
+    for (const r of rows) everyone.add(r.assigner_id);
+    for (const list of assigneesByTask.values()) for (const a of list) everyone.add(a.employee_id);
+    const nameOf = await fetchEmployeeNames([...everyone]);
+
+    // 완료는 아래로. 그 안에서는 조회 순서(최근 갱신순)를 그대로 쓴다.
+    const rank = (status: Task["status"]) => (status === "done" ? 1 : 0);
+
+    return rows
+      .map((row): TaskBoardItem => {
+        const assignees = assigneesByTask.get(row.id) ?? [];
+        return {
+          id: row.id,
+          title: row.title,
+          kind: row.kind,
+          status: row.status,
+          progress: visibleProgress(row),
+          dueOn: row.due_on,
+          assignerName: displayName(row.assigner_id, nameOf.get(row.assigner_id), row.assigner_name),
+          assigneeNames: assignees.map((a) =>
+            displayName(a.employee_id, nameOf.get(a.employee_id), a.employee_name),
+          ),
+          updatedAt: row.updated_at,
+          mine:
+            row.assigner_id === employeeId ||
+            assignees.some((a) => a.employee_id === employeeId),
+        };
+      })
+      .sort((a, b) => rank(a.status) - rank(b.status));
+  } catch (error) {
+    console.error("[tasks] 게시판 조회 실패", error);
     return [];
   }
 }
